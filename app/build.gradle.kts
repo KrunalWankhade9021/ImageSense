@@ -15,6 +15,9 @@ android {
         versionCode = 1
         versionName = "0.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        // Ship only arm64 native libs (ONNX Runtime). Covers virtually all modern
+        // Android phones and avoids bundling x86/armeabi variants we don't need.
+        ndk { abiFilters += "arm64-v8a" }
     }
 
     buildFeatures {
