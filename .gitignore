@@ -20,3 +20,7 @@ __pycache__/
 .idea/
 *.iml
 .DS_Store
+
+# Large model binaries — regenerate with tools/export_model.py
+*.onnx
+app/src/main/assets/models/**/*.onnx
