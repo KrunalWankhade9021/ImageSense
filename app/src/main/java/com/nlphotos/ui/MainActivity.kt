@@ -14,6 +14,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.ui.graphics.Color
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -38,11 +40,23 @@ private val PHOTO_PERMISSION: String =
         Manifest.permission.READ_EXTERNAL_STORAGE
     }
 
+// A clear dark theme so the search bar and controls are unmistakably visible.
+private val NlPhotosColors = darkColorScheme(
+    primary = Color(0xFF7DD3FC),
+    onPrimary = Color(0xFF003544),
+    background = Color(0xFF0F1115),
+    onBackground = Color(0xFFE6E8EB),
+    surface = Color(0xFF161A20),
+    onSurface = Color(0xFFE6E8EB),
+    surfaceVariant = Color(0xFF263038),
+    onSurfaceVariant = Color(0xFFB7C2CC),
+)
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            MaterialTheme {
+            MaterialTheme(colorScheme = NlPhotosColors) {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     AppRoot()
                 }
