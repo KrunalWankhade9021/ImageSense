@@ -75,9 +75,12 @@ def export_fp16(module, dummy_input, name, input_names, output_names, dynamic_ax
         opset_version=17,
     )
 
-    print(f"  Converting {name} to fp16 …")
+    print(f"  Converting {name} to fp16 (keep float32 I/O) …")
     m32 = onnx.load(fp32_path)
-    m16 = float16.convert_float_to_float16(m32)
+    # keep_io_types=True keeps graph inputs/outputs float32 while weights become
+    # fp16. This keeps the Android engine simple (float32 tensors in/out) at no
+    # accuracy cost, and avoids ORT "expected tensor(float16)" input errors.
+    m16 = float16.convert_float_to_float16(m32, keep_io_types=True)
     onnx.save(m16, fp16_path)
     os.remove(fp32_path)   # keep only fp16
     print(f"  Saved {fp16_path}")
