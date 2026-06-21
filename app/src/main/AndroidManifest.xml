@@ -9,6 +9,7 @@
         android:name=".App"
         android:allowBackup="false"
         android:label="NLPhotos"
+        android:largeHeap="true"
         android:supportsRtl="true">
         <!-- MainActivity is added in Task 13 (UI). -->
     </application>
