@@ -4,6 +4,9 @@
     <!-- Privacy by construction: the network permission is intentionally NOT
          declared, so this app can never send data off the device. -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
 
     <application
         android:name=".App"
@@ -11,7 +14,14 @@
         android:label="NLPhotos"
         android:largeHeap="true"
         android:supportsRtl="true">
-        <!-- MainActivity is added in Task 13 (UI). -->
+        <activity
+            android:name=".ui.MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
     </application>
 
 </manifest>

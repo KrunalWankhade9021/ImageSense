@@ -15,7 +15,7 @@
 - **No hardcoded model constants** in preprocessing or tokenizer code. All model-specific values come from `ModelDescriptor`.
 - **All embedding vectors are L2-normalized at creation.** Cosine similarity is therefore a plain dot product everywhere.
 - **Model (v1):** CLIP ViT-B/32, **fp16** ONNX, embedding dim **512**, input resolution **224**, context length **77**.
-- **Min SDK 26, target/compile SDK 34.** Kotlin 1.9+, AGP 8.x.
+- **Min SDK 26, target/compile SDK 35** (SDK 35 is the installed platform). Kotlin 1.9+, AGP 8.x.
 
 ---
 
@@ -114,8 +114,8 @@ plugins {
 }
 android {
     namespace = "com.nlphotos"
-    compileSdk = 34
-    defaultConfig { applicationId = "com.nlphotos"; minSdk = 26; targetSdk = 34 }
+    compileSdk = 35
+    defaultConfig { applicationId = "com.nlphotos"; minSdk = 26; targetSdk = 35 }
     buildFeatures { compose = true }
     composeOptions { kotlinCompilerExtensionVersion = "1.5.14" }
     // Keep .onnx assets uncompressed so ONNX Runtime can mmap them
