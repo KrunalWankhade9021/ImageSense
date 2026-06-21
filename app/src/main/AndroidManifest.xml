@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Privacy by construction: the network permission is intentionally NOT
+         declared, so this app can never send data off the device. -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+
+    <application
+        android:name=".App"
+        android:allowBackup="false"
+        android:label="NLPhotos"
+        android:supportsRtl="true">
+        <!-- MainActivity is added in Task 13 (UI). -->
+    </application>
+
+</manifest>

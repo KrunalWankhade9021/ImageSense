@@ -1,0 +1,22 @@
+# Build outputs
+build/
+.gradle/
+*.apk
+*.ap_
+*.dex
+
+# Local config
+local.properties
+
+# Python export env
+.venv-export/
+__pycache__/
+*.pyc
+
+# SDD scratch (ledger + briefs are local coordination state)
+.superpowers/
+
+# IDE
+.idea/
+*.iml
+.DS_Store
