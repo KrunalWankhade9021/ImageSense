@@ -88,6 +88,23 @@ export ANDROID_HOME=$HOME/Android/Sdk
 The APK is ~230 MB (it bundles the model), so the first install takes a couple
 of minutes. Then open **NLPhotos** from the app drawer.
 
+### Quick reinstall script
+
+`tools/reinstall.sh` wraps build + (re)install + launch (and optional
+screenshot) so you don't have to remember the commands. Run it from the repo
+root:
+
+```bash
+./tools/reinstall.sh           # build + install, keeps app data/permissions
+./tools/reinstall.sh --clean   # uninstall first, then a fresh install
+./tools/reinstall.sh --shot    # also save a screenshot to /tmp/nlphotos.png
+```
+
+Flags combine, e.g. `./tools/reinstall.sh --clean --shot`. It defaults
+`ANDROID_HOME` to `~/Android/Sdk` (respects yours if already set), `cd`s to the
+repo root automatically, and exits early with a clear message if no device is
+connected.
+
 ---
 
 ## 5. Using the app
@@ -120,11 +137,36 @@ export ANDROID_HOME=$HOME/Android/Sdk
 ```
 
 > Note: `connectedDebugAndroidTest` uninstalls the app when it finishes. Re-run
-> `./gradlew :app:installDebug` afterward to keep NLPhotos on the phone.
+> `./gradlew :app:installDebug` (or `./tools/reinstall.sh`) afterward to keep
+> NLPhotos on the phone.
 
 ---
 
-## 7. Troubleshooting
+## 7. CI and releases
+
+**CI (GitHub Actions)** — `.github/workflows/ci.yml` runs on every merge to
+`main` (and via manual dispatch). It compiles the app and runs the JVM unit
+tests. It does **not** need the ONNX models: the build only packages whatever
+assets exist, and the unit tests use the committed vocab/merges fixtures.
+Feature-branch pushes are intentionally not built.
+
+**Releases** — cut from your machine with `tools/release.sh` (it needs the
+~230 MB models, which only live locally). It verifies, builds the APK, and
+creates the GitHub release via the `gh` CLI:
+
+```bash
+./tools/release.sh v0.2.0                 # debug APK + auto-generated notes
+./tools/release.sh v0.2.0 --release       # signed release APK instead
+./tools/release.sh v0.2.0 --draft         # create as a draft to review first
+./tools/release.sh v0.2.0 --notes "…"     # custom release notes
+```
+
+Requires `gh auth login` and the models present under
+`app/src/main/assets/models/`.
+
+---
+
+## 8. Troubleshooting
 
 | Symptom | Fix |
 |---|---|

@@ -8,6 +8,7 @@ import android.graphics.Bitmap
 import com.nlphotos.model.ModelDescriptor
 import com.nlphotos.search.l2Normalize
 import java.io.Closeable
+import java.io.File
 import java.nio.FloatBuffer
 import java.nio.LongBuffer
 
@@ -24,17 +25,69 @@ class OnnxEmbeddingEngine(
 
     private val env: OrtEnvironment by lazy { OrtEnvironment.getEnvironment() }
 
-    private val imageSessionDelegate = lazy {
-        val bytes = context.assets.open(descriptor.imageEncoderAsset).readBytes()
-        env.createSession(bytes)
-    }
+    private val imageSessionDelegate = lazy { buildSession(descriptor.imageEncoderAsset) }
     private val imageSession: OrtSession by imageSessionDelegate
 
-    private val textSessionDelegate = lazy {
-        val bytes = context.assets.open(descriptor.textEncoderAsset).readBytes()
-        env.createSession(bytes)
-    }
+    private val textSessionDelegate = lazy { buildSession(descriptor.textEncoderAsset) }
     private val textSession: OrtSession by textSessionDelegate
+
+    /**
+     * Builds a session with an on-disk optimized-model cache.
+     *
+     * An ORT inference session lives in RAM and is freed when the process dies,
+     * so every cold start must rebuild it — that's the first-search delay.
+     *
+     * To shrink later cold starts we cache the *optimized* graph on disk:
+     *  - First launch (no cache): create the session from the bundled asset bytes
+     *    with [setOptimizedModelFilePath]; ORT writes the fully-optimized model to
+     *    the cache file as a side effect.
+     *  - Later launches: create the session straight from that cache file (ORT
+     *    mmaps it — no heap copy) with optimizations disabled (already applied),
+     *    which initializes noticeably faster.
+     *
+     * The cache dir is keyed by app version so a model/app update invalidates it.
+     */
+    private fun buildSession(assetName: String): OrtSession {
+        val cacheDir = optimizedCacheDir()
+        val cacheFile = File(cacheDir, assetName.substringAfterLast('/') + ".opt.onnx")
+
+        if (cacheFile.exists()) {
+            val opts = OrtSession.SessionOptions().apply {
+                setOptimizationLevel(OrtSession.SessionOptions.OptLevel.NO_OPT)
+            }
+            return env.createSession(cacheFile.absolutePath, opts)
+        }
+
+        val opts = OrtSession.SessionOptions().apply {
+            setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT)
+            setOptimizedModelFilePath(cacheFile.absolutePath)
+        }
+        val bytes = context.assets.open(assetName).readBytes()
+        return env.createSession(bytes, opts)
+    }
+
+    /** filesDir/ort-cache-v<versionCode>, created on demand; stale versions pruned. */
+    private fun optimizedCacheDir(): File {
+        val version = try {
+            val info = context.packageManager.getPackageInfo(context.packageName, 0)
+            @Suppress("DEPRECATION")
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                info.longVersionCode
+            } else {
+                info.versionCode.toLong()
+            }
+        } catch (e: Exception) {
+            0L
+        }
+        val dir = File(context.filesDir, "ort-cache-v$version")
+        if (!dir.exists()) {
+            // Drop optimized caches from previous app versions before creating ours.
+            context.filesDir.listFiles { f -> f.isDirectory && f.name.startsWith("ort-cache-v") }
+                ?.forEach { it.deleteRecursively() }
+            dir.mkdirs()
+        }
+        return dir
+    }
 
     private val preprocessor: ImagePreprocessor by lazy { ImagePreprocessor(descriptor) }
 
@@ -75,6 +128,12 @@ class OnnxEmbeddingEngine(
                 return l2Normalize(raw)
             }
         }
+    }
+
+    override fun warmUpText() {
+        // Touch the lazy session + tokenizer so they're built ahead of the first
+        // user query. A tiny dummy encode forces full initialization.
+        encodeText("warm up")
     }
 
     override fun close() {

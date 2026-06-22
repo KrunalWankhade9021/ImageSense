@@ -40,16 +40,42 @@ private val PHOTO_PERMISSION: String =
         Manifest.permission.READ_EXTERNAL_STORAGE
     }
 
-// A clear dark theme so the search bar and controls are unmistakably visible.
+// Android 14+ exposes a "select more photos" flow; request the user-selected
+// permission alongside the full one so re-requesting re-opens the picker.
+private val PHOTO_PERMISSIONS: Array<String> =
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+        arrayOf(
+            Manifest.permission.READ_MEDIA_IMAGES,
+            Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED,
+        )
+    } else {
+        arrayOf(PHOTO_PERMISSION)
+    }
+
+/**
+ * True if we can read at least some photos. On Android 14+ "limited access"
+ * grants only READ_MEDIA_VISUAL_USER_SELECTED (NOT READ_MEDIA_IMAGES), so we
+ * must accept either — otherwise partial access looks like a denial.
+ */
+private fun hasPhotoAccess(context: android.content.Context): Boolean {
+    fun ok(p: String) = ContextCompat.checkSelfPermission(context, p) ==
+        android.content.pm.PackageManager.PERMISSION_GRANTED
+    return PHOTO_PERMISSIONS.any { ok(it) }
+}
+
+// "Calm private vault" — deep slate so photos pop, one warm amber accent.
 private val NlPhotosColors = darkColorScheme(
-    primary = Color(0xFF7DD3FC),
-    onPrimary = Color(0xFF003544),
-    background = Color(0xFF0F1115),
-    onBackground = Color(0xFFE6E8EB),
-    surface = Color(0xFF161A20),
-    onSurface = Color(0xFFE6E8EB),
-    surfaceVariant = Color(0xFF263038),
-    onSurfaceVariant = Color(0xFFB7C2CC),
+    primary = Color(0xFFFFB74D),            // amber accent
+    onPrimary = Color(0xFF3A2400),
+    primaryContainer = Color(0xFF2A2118),   // amber-tinted pill background
+    onPrimaryContainer = Color(0xFFFFD9A0),
+    background = Color(0xFF101116),          // deep slate
+    onBackground = Color(0xFFECEDF1),
+    surface = Color(0xFF181A22),
+    onSurface = Color(0xFFECEDF1),
+    surfaceVariant = Color(0xFF242732),      // search bar / tiles
+    onSurfaceVariant = Color(0xFFA9AEBC),
+    outline = Color(0xFF3A3E4B),
 )
 
 class MainActivity : ComponentActivity() {
@@ -70,21 +96,32 @@ private fun AppRoot() {
     val context = LocalContext.current
     val vm: SearchViewModel = viewModel()
 
-    var granted by remember {
-        mutableStateOf(
-            ContextCompat.checkSelfPermission(context, PHOTO_PERMISSION) ==
-                android.content.pm.PackageManager.PERMISSION_GRANTED,
-        )
-    }
+    var granted by remember { mutableStateOf(hasPhotoAccess(context)) }
 
     val launcher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission(),
-    ) { isGranted ->
-        granted = isGranted
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) { results ->
+        // Accept partial access too: any granted permission means we can read photos.
+        granted = results.values.any { it } || hasPhotoAccess(context)
+    }
+
+    // "Add photos": re-open the system picker (Android 14+ "select more photos")
+    // and force a fresh index so newly selected/captured images get searchable.
+    val reselectLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) { results ->
+        if (results.values.any { it }) {
+            granted = true
+            // Force a fresh index; the work-completion observer below reloads the
+            // buffer when it finishes, so newly selected photos become searchable
+            // without an app restart. (No immediate loadBuffer — the worker hasn't
+            // indexed the new photos yet at this point.)
+            IndexWorker.enqueue(context.applicationContext, force = true)
+        }
     }
 
     LaunchedEffect(Unit) {
-        if (!granted) launcher.launch(PHOTO_PERMISSION)
+        if (!granted) launcher.launch(PHOTO_PERMISSIONS)
     }
 
     // Once granted: kick off indexing and load whatever is already indexed.
@@ -92,6 +129,7 @@ private fun AppRoot() {
         if (granted) {
             IndexWorker.enqueue(context.applicationContext)
             vm.loadBuffer()
+            vm.warmUp() // build the text encoder ahead of the first search
         }
     }
 
@@ -111,7 +149,7 @@ private fun AppRoot() {
 
     if (!granted) {
         Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
-            Button(onClick = { launcher.launch(PHOTO_PERMISSION) }) {
+            Button(onClick = { launcher.launch(PHOTO_PERMISSIONS) }) {
                 Text("Grant photo access")
             }
         }
@@ -121,15 +159,18 @@ private fun AppRoot() {
     val query by vm.query.collectAsState()
     val results by vm.results.collectAsState()
     val indexedCount by vm.indexedCount.collectAsState()
+    val searching by vm.searching.collectAsState()
 
     SearchScreen(
         query = query,
         onQueryChange = vm::onQueryChange,
-        onSearch = { vm.search() },
+        onSubmit = { vm.search(it) },
         results = results,
         indexedCount = indexedCount,
         indexing = indexing,
         indexDone = done,
         indexTotal = total,
+        searching = searching,
+        onReindex = { reselectLauncher.launch(PHOTO_PERMISSIONS) },
     )
 }
