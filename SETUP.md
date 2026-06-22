@@ -88,6 +88,23 @@ export ANDROID_HOME=$HOME/Android/Sdk
 The APK is ~230 MB (it bundles the model), so the first install takes a couple
 of minutes. Then open **NLPhotos** from the app drawer.
 
+### Quick reinstall script
+
+`tools/reinstall.sh` wraps build + (re)install + launch (and optional
+screenshot) so you don't have to remember the commands. Run it from the repo
+root:
+
+```bash
+./tools/reinstall.sh           # build + install, keeps app data/permissions
+./tools/reinstall.sh --clean   # uninstall first, then a fresh install
+./tools/reinstall.sh --shot    # also save a screenshot to /tmp/nlphotos.png
+```
+
+Flags combine, e.g. `./tools/reinstall.sh --clean --shot`. It defaults
+`ANDROID_HOME` to `~/Android/Sdk` (respects yours if already set), `cd`s to the
+repo root automatically, and exits early with a clear message if no device is
+connected.
+
 ---
 
 ## 5. Using the app
@@ -120,7 +137,8 @@ export ANDROID_HOME=$HOME/Android/Sdk
 ```
 
 > Note: `connectedDebugAndroidTest` uninstalls the app when it finishes. Re-run
-> `./gradlew :app:installDebug` afterward to keep NLPhotos on the phone.
+> `./gradlew :app:installDebug` (or `./tools/reinstall.sh`) afterward to keep
+> NLPhotos on the phone.
 
 ---
 

@@ -36,6 +36,19 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
     private val _query = MutableStateFlow("")
     val query: StateFlow<String> = _query.asStateFlow()
 
+    private val _searching = MutableStateFlow(false)
+    val searching: StateFlow<Boolean> = _searching.asStateFlow()
+
+    /**
+     * Builds the text encoder in the background so the first search is fast
+     * instead of paying a ~1 min cold-start to load the model + tokenizer.
+     */
+    fun warmUp() {
+        viewModelScope.launch {
+            withContext(Dispatchers.Default) { engine.warmUpText() }
+        }
+    }
+
     /** (Re)loads the in-memory buffer from the persisted store. */
     fun loadBuffer() {
         viewModelScope.launch {
@@ -65,8 +78,14 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
 
     private fun runSearch(text: String) {
         viewModelScope.launch {
-            val hits = withContext(Dispatchers.Default) { searchEngine.search(text) }
-            _results.value = hits
+            _searching.value = true
+            try {
+                val hits = withContext(Dispatchers.Default) { searchEngine.search(text) }
+                // Ignore stale results if the query changed while we were running.
+                if (_query.value == text) _results.value = hits
+            } finally {
+                if (_query.value == text) _searching.value = false
+            }
         }
     }
 

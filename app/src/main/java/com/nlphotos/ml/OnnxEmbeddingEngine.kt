@@ -77,6 +77,12 @@ class OnnxEmbeddingEngine(
         }
     }
 
+    override fun warmUpText() {
+        // Touch the lazy session + tokenizer so they're built ahead of the first
+        // user query. A tiny dummy encode forces full initialization.
+        encodeText("warm up")
+    }
+
     override fun close() {
         if (imageSessionDelegate.isInitialized()) imageSession.close()
         if (textSessionDelegate.isInitialized()) textSession.close()

@@ -40,16 +40,19 @@ private val PHOTO_PERMISSION: String =
         Manifest.permission.READ_EXTERNAL_STORAGE
     }
 
-// A clear dark theme so the search bar and controls are unmistakably visible.
+// "Calm private vault" — deep slate so photos pop, one warm amber accent.
 private val NlPhotosColors = darkColorScheme(
-    primary = Color(0xFF7DD3FC),
-    onPrimary = Color(0xFF003544),
-    background = Color(0xFF0F1115),
-    onBackground = Color(0xFFE6E8EB),
-    surface = Color(0xFF161A20),
-    onSurface = Color(0xFFE6E8EB),
-    surfaceVariant = Color(0xFF263038),
-    onSurfaceVariant = Color(0xFFB7C2CC),
+    primary = Color(0xFFFFB74D),            // amber accent
+    onPrimary = Color(0xFF3A2400),
+    primaryContainer = Color(0xFF2A2118),   // amber-tinted pill background
+    onPrimaryContainer = Color(0xFFFFD9A0),
+    background = Color(0xFF101116),          // deep slate
+    onBackground = Color(0xFFECEDF1),
+    surface = Color(0xFF181A22),
+    onSurface = Color(0xFFECEDF1),
+    surfaceVariant = Color(0xFF242732),      // search bar / tiles
+    onSurfaceVariant = Color(0xFFA9AEBC),
+    outline = Color(0xFF3A3E4B),
 )
 
 class MainActivity : ComponentActivity() {
@@ -92,6 +95,7 @@ private fun AppRoot() {
         if (granted) {
             IndexWorker.enqueue(context.applicationContext)
             vm.loadBuffer()
+            vm.warmUp() // build the text encoder ahead of the first search
         }
     }
 
@@ -121,15 +125,17 @@ private fun AppRoot() {
     val query by vm.query.collectAsState()
     val results by vm.results.collectAsState()
     val indexedCount by vm.indexedCount.collectAsState()
+    val searching by vm.searching.collectAsState()
 
     SearchScreen(
         query = query,
         onQueryChange = vm::onQueryChange,
-        onSearch = { vm.search() },
+        onSubmit = { vm.search(it) },
         results = results,
         indexedCount = indexedCount,
         indexing = indexing,
         indexDone = done,
         indexTotal = total,
+        searching = searching,
     )
 }
