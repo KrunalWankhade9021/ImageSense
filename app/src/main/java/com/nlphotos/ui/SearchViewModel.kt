@@ -45,7 +45,12 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
      */
     fun warmUp() {
         viewModelScope.launch {
-            withContext(Dispatchers.Default) { engine.warmUpText() }
+            try {
+                withContext(Dispatchers.Default) { engine.warmUpText() }
+            } catch (e: Exception) {
+                // Non-fatal: the first real search will just pay the cold-start.
+                android.util.Log.w("SearchViewModel", "Text encoder warm-up failed", e)
+            }
         }
     }
 

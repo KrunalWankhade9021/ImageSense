@@ -112,8 +112,11 @@ private fun AppRoot() {
     ) { results ->
         if (results.values.any { it }) {
             granted = true
+            // Force a fresh index; the work-completion observer below reloads the
+            // buffer when it finishes, so newly selected photos become searchable
+            // without an app restart. (No immediate loadBuffer — the worker hasn't
+            // indexed the new photos yet at this point.)
             IndexWorker.enqueue(context.applicationContext, force = true)
-            vm.loadBuffer()
         }
     }
 

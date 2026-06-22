@@ -5,6 +5,7 @@
 #   ./tools/reinstall.sh            # build + install (keeps app data/permissions)
 #   ./tools/reinstall.sh --clean    # uninstall first, then fresh install
 #   ./tools/reinstall.sh --shot     # also grab a screenshot to /tmp/nlphotos.png
+#   ./tools/reinstall.sh --offline  # use Gradle's offline cache (faster, needs warm cache)
 #   flags can be combined, e.g. ./tools/reinstall.sh --clean --shot
 set -euo pipefail
 
@@ -13,10 +14,12 @@ export ANDROID_HOME="${ANDROID_HOME:-$HOME/Android/Sdk}"
 
 CLEAN=0
 SHOT=0
+OFFLINE=""
 for arg in "$@"; do
   case "$arg" in
-    --clean) CLEAN=1 ;;
-    --shot)  SHOT=1 ;;
+    --clean)   CLEAN=1 ;;
+    --shot)    SHOT=1 ;;
+    --offline) OFFLINE="--offline" ;;
     *) echo "Unknown flag: $arg" >&2; exit 1 ;;
   esac
 done
@@ -38,7 +41,7 @@ if [ "$CLEAN" -eq 1 ]; then
 fi
 
 echo "==> Building + installing debug APK…"
-./gradlew :app:installDebug --offline --no-daemon
+./gradlew :app:installDebug $OFFLINE --no-daemon
 
 echo "==> Launching $PKG…"
 adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1 >/dev/null

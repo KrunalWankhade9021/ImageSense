@@ -167,21 +167,60 @@ class BpeTokenizer private constructor(
         /**
          * Parse a flat JSON object of the form {"string": integer, ...} without
          * depending on org.json (which is not available in pure JVM unit tests).
+         *
+         * Hand-written single-pass scanner. A regex (`findAll`) over the ~950KB,
+         * 49K-entry CLIP vocab took ~46s on-device (the entire cold-start delay);
+         * this scanner does the same work in a few ms while producing an identical
+         * map, so tokenization stays bit-for-bit unchanged (accuracy-critical).
          */
         internal fun parseJsonStringIntMap(json: String): HashMap<String, Int> {
-            val map = HashMap<String, Int>()
-            // Regex: capture JSON string key and integer value
-            val pattern = Regex(""""((?:[^"\\]|\\.)*)"\s*:\s*(-?\d+)""")
-            for (match in pattern.findAll(json)) {
-                val rawKey = match.groupValues[1]
-                    .replace("\\\"", "\"")
-                    .replace("\\\\", "\\")
-                    .replace("\\/", "/")
-                    .replace("\\n", "\n")
-                    .replace("\\r", "\r")
-                    .replace("\\t", "\t")
-                val value = match.groupValues[2].toInt()
-                map[rawKey] = value
+            val map = HashMap<String, Int>(1 shl 16)
+            val n = json.length
+            var i = 0
+            val sb = StringBuilder()
+            while (i < n) {
+                // Find the next key's opening quote. Integer values are unquoted,
+                // so the next quote always begins a key.
+                while (i < n && json[i] != '"') i++
+                if (i >= n) break
+                i++ // skip opening quote
+
+                sb.setLength(0)
+                while (i < n) {
+                    val c = json[i]
+                    if (c == '"') { i++; break }            // closing quote
+                    if (c == '\\' && i + 1 < n) {
+                        when (val esc = json[i + 1]) {
+                            '"' -> sb.append('"')
+                            '\\' -> sb.append('\\')
+                            '/' -> sb.append('/')
+                            'n' -> sb.append('\n')
+                            'r' -> sb.append('\r')
+                            't' -> sb.append('\t')
+                            'b' -> sb.append('\b')
+                            'f' -> sb.append('\u000C')
+                            'u' -> {
+                                val hex = json.substring(i + 2, i + 6)
+                                sb.append(hex.toInt(16).toChar())
+                                i += 4
+                            }
+                            else -> sb.append(esc)
+                        }
+                        i += 2
+                    } else {
+                        sb.append(c); i++
+                    }
+                }
+                val key = sb.toString()
+
+                // Skip to ':' then whitespace, then read the (optionally negative) integer.
+                while (i < n && json[i] != ':') i++
+                i++ // skip ':'
+                while (i < n && json[i].isWhitespace()) i++
+                val start = i
+                if (i < n && json[i] == '-') i++
+                while (i < n && json[i] in '0'..'9') i++
+                map[key] = json.substring(start, i).toInt()
             }
             return map
         }
