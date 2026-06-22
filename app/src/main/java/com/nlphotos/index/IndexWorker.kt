@@ -66,11 +66,18 @@ class IndexWorker(
         const val UNIQUE_WORK_NAME = "nlphotos-index"
         const val BATCH_SIZE = 16
 
-        fun enqueue(context: Context) {
+        /**
+         * Enqueue an indexing run.
+         *
+         * @param force when true, replaces any existing run so a fresh scan picks
+         *   up newly selected/captured photos immediately (used by "Add photos").
+         *   When false, keeps an in-flight run (used on normal startup).
+         */
+        fun enqueue(context: Context, force: Boolean = false) {
             val request = OneTimeWorkRequestBuilder<IndexWorker>().build()
             WorkManager.getInstance(context).enqueueUniqueWork(
                 UNIQUE_WORK_NAME,
-                ExistingWorkPolicy.KEEP,
+                if (force) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP,
                 request,
             )
         }

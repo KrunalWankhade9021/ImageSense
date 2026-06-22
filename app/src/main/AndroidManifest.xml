@@ -4,6 +4,9 @@
     <!-- Privacy by construction: the network permission is intentionally NOT
          declared, so this app can never send data off the device. -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <!-- Android 14+: lets the user grant access to a selected subset of photos
+         and re-open the picker to add more (partial / limited access). -->
+    <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
     <uses-permission
         android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />

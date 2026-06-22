@@ -40,6 +40,29 @@ private val PHOTO_PERMISSION: String =
         Manifest.permission.READ_EXTERNAL_STORAGE
     }
 
+// Android 14+ exposes a "select more photos" flow; request the user-selected
+// permission alongside the full one so re-requesting re-opens the picker.
+private val PHOTO_PERMISSIONS: Array<String> =
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+        arrayOf(
+            Manifest.permission.READ_MEDIA_IMAGES,
+            Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED,
+        )
+    } else {
+        arrayOf(PHOTO_PERMISSION)
+    }
+
+/**
+ * True if we can read at least some photos. On Android 14+ "limited access"
+ * grants only READ_MEDIA_VISUAL_USER_SELECTED (NOT READ_MEDIA_IMAGES), so we
+ * must accept either — otherwise partial access looks like a denial.
+ */
+private fun hasPhotoAccess(context: android.content.Context): Boolean {
+    fun ok(p: String) = ContextCompat.checkSelfPermission(context, p) ==
+        android.content.pm.PackageManager.PERMISSION_GRANTED
+    return PHOTO_PERMISSIONS.any { ok(it) }
+}
+
 // "Calm private vault" — deep slate so photos pop, one warm amber accent.
 private val NlPhotosColors = darkColorScheme(
     primary = Color(0xFFFFB74D),            // amber accent
@@ -73,21 +96,29 @@ private fun AppRoot() {
     val context = LocalContext.current
     val vm: SearchViewModel = viewModel()
 
-    var granted by remember {
-        mutableStateOf(
-            ContextCompat.checkSelfPermission(context, PHOTO_PERMISSION) ==
-                android.content.pm.PackageManager.PERMISSION_GRANTED,
-        )
-    }
+    var granted by remember { mutableStateOf(hasPhotoAccess(context)) }
 
     val launcher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission(),
-    ) { isGranted ->
-        granted = isGranted
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) { results ->
+        // Accept partial access too: any granted permission means we can read photos.
+        granted = results.values.any { it } || hasPhotoAccess(context)
+    }
+
+    // "Add photos": re-open the system picker (Android 14+ "select more photos")
+    // and force a fresh index so newly selected/captured images get searchable.
+    val reselectLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) { results ->
+        if (results.values.any { it }) {
+            granted = true
+            IndexWorker.enqueue(context.applicationContext, force = true)
+            vm.loadBuffer()
+        }
     }
 
     LaunchedEffect(Unit) {
-        if (!granted) launcher.launch(PHOTO_PERMISSION)
+        if (!granted) launcher.launch(PHOTO_PERMISSIONS)
     }
 
     // Once granted: kick off indexing and load whatever is already indexed.
@@ -115,7 +146,7 @@ private fun AppRoot() {
 
     if (!granted) {
         Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
-            Button(onClick = { launcher.launch(PHOTO_PERMISSION) }) {
+            Button(onClick = { launcher.launch(PHOTO_PERMISSIONS) }) {
                 Text("Grant photo access")
             }
         }
@@ -137,5 +168,6 @@ private fun AppRoot() {
         indexDone = done,
         indexTotal = total,
         searching = searching,
+        onReindex = { reselectLauncher.launch(PHOTO_PERMISSIONS) },
     )
 }

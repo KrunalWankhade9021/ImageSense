@@ -72,6 +72,7 @@ fun SearchScreen(
     indexDone: Int,
     indexTotal: Int,
     searching: Boolean,
+    onReindex: () -> Unit,
 ) {
     var fullScreen by remember { mutableStateOf<String?>(null) }
 
@@ -81,7 +82,7 @@ fun SearchScreen(
             .statusBarsPadding()
             .padding(horizontal = 16.dp),
     ) {
-        Header(indexedCount = indexedCount)
+        Header(indexedCount = indexedCount, onReindex = onReindex)
 
         Spacer(Modifier.height(12.dp))
 
@@ -137,7 +138,7 @@ fun SearchScreen(
 }
 
 @Composable
-private fun Header(indexedCount: Int) {
+private fun Header(indexedCount: Int, onReindex: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -156,7 +157,30 @@ private fun Header(indexedCount: Int) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+        ReindexChip(onClick = onReindex)
+        Spacer(Modifier.width(8.dp))
         PrivacyChip()
+    }
+}
+
+@Composable
+private fun ReindexChip(onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(50))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text("➕", style = MaterialTheme.typography.labelMedium)
+        Text(
+            "Add photos",
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurface,
+            fontWeight = FontWeight.Medium,
+        )
     }
 }
 
