@@ -142,7 +142,31 @@ export ANDROID_HOME=$HOME/Android/Sdk
 
 ---
 
-## 7. Troubleshooting
+## 7. CI and releases
+
+**CI (GitHub Actions)** — `.github/workflows/ci.yml` runs on every merge to
+`main` (and via manual dispatch). It compiles the app and runs the JVM unit
+tests. It does **not** need the ONNX models: the build only packages whatever
+assets exist, and the unit tests use the committed vocab/merges fixtures.
+Feature-branch pushes are intentionally not built.
+
+**Releases** — cut from your machine with `tools/release.sh` (it needs the
+~230 MB models, which only live locally). It verifies, builds the APK, and
+creates the GitHub release via the `gh` CLI:
+
+```bash
+./tools/release.sh v0.2.0                 # debug APK + auto-generated notes
+./tools/release.sh v0.2.0 --release       # signed release APK instead
+./tools/release.sh v0.2.0 --draft         # create as a draft to review first
+./tools/release.sh v0.2.0 --notes "…"     # custom release notes
+```
+
+Requires `gh auth login` and the models present under
+`app/src/main/assets/models/`.
+
+---
+
+## 8. Troubleshooting
 
 | Symptom | Fix |
 |---|---|
