@@ -147,7 +147,7 @@ private fun Header(indexedCount: Int, onReindex: () -> Unit) {
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = "NLPhotos",
+                text = "ImageSense",
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.SemiBold,
             )
