@@ -115,22 +115,32 @@ suspend fun runIndexing(
     for (batch in diff.toEncode.chunked(batchSize)) {
         val records = ArrayList<PhotoRecord>(batch.size)
         for (item in batch) {
-            val bitmap = decode(item)
+            // Skip individual photos that can't be decoded/encoded (corrupt files,
+            // unsupported codecs) instead of aborting the whole index. One bad
+            // image must not stop the other thousands from becoming searchable.
             val vector = try {
-                engine.encodeImage(bitmap)
-            } finally {
-                bitmap.recycle()
+                val bitmap = decode(item)
+                try {
+                    engine.encodeImage(bitmap)
+                } finally {
+                    bitmap.recycle()
+                }
+            } catch (e: Exception) {
+                android.util.Log.w("IndexWorker", "Skipping un-indexable photo ${item.uri}", e)
+                null
             }
-            records.add(
-                PhotoRecord(
-                    photoId = item.photoId,
-                    uri = item.uri,
-                    dateModified = item.dateModified,
-                    vector = vector,
-                ),
-            )
+            if (vector != null) {
+                records.add(
+                    PhotoRecord(
+                        photoId = item.photoId,
+                        uri = item.uri,
+                        dateModified = item.dateModified,
+                        vector = vector,
+                    ),
+                )
+            }
         }
-        store.upsertAll(records)
+        if (records.isNotEmpty()) store.upsertAll(records)
         done += batch.size
         setProgress(done, total)
         yield()
