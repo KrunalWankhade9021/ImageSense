@@ -61,6 +61,22 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    /**
+     * Called after a photo was deleted from the device (via the system delete
+     * flow). Removes it from the index DB, refreshes the in-memory buffer and
+     * the current result/gallery lists so it disappears everywhere immediately.
+     */
+    fun onPhotoDeleted(photoId: Long) {
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { store.delete(listOf(photoId)) }
+            val records = withContext(Dispatchers.IO) { store.allRecords() }
+            buffer.load(records)
+            _indexedCount.value = buffer.size
+            _results.value = _results.value.filterNot { it.photoId == photoId }
+            loadGallery()
+        }
+    }
+
     /** (Re)loads the in-memory buffer from the persisted store. */
     fun loadBuffer() {
         viewModelScope.launch {

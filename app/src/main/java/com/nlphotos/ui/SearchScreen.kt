@@ -73,8 +73,9 @@ fun SearchScreen(
     indexTotal: Int,
     searching: Boolean,
     onReindex: () -> Unit,
+    onDelete: (photoId: Long, uri: String) -> Unit,
 ) {
-    var fullScreen by remember { mutableStateOf<String?>(null) }
+    var fullScreen by remember { mutableStateOf<SearchHit?>(null) }
 
     Column(
         modifier = Modifier
@@ -128,13 +129,22 @@ fun SearchScreen(
                     .navigationBarsPadding(),
             ) {
                 items(results, key = { it.photoId }) { hit ->
-                    PhotoTile(uri = hit.uri, onClick = { fullScreen = hit.uri })
+                    PhotoTile(uri = hit.uri, onClick = { fullScreen = hit })
                 }
             }
         }
     }
 
-    fullScreen?.let { uri -> FullScreenViewer(uri = uri, onDismiss = { fullScreen = null }) }
+    fullScreen?.let { hit ->
+        FullScreenViewer(
+            uri = hit.uri,
+            onDismiss = { fullScreen = null },
+            onDelete = {
+                onDelete(hit.photoId, hit.uri)
+                fullScreen = null
+            },
+        )
+    }
 }
 
 @Composable
@@ -339,7 +349,7 @@ private fun CenterMessage(title: String, subtitle: String) {
 }
 
 @Composable
-private fun FullScreenViewer(uri: String, onDismiss: () -> Unit) {
+private fun FullScreenViewer(uri: String, onDismiss: () -> Unit, onDelete: () -> Unit) {
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
@@ -384,6 +394,20 @@ private fun FullScreenViewer(uri: String, onDismiss: () -> Unit) {
                     .padding(horizontal = 16.dp, vertical = 8.dp),
             ) {
                 Text("Close", color = Color.White, style = MaterialTheme.typography.labelLarge)
+            }
+
+            // Delete action — the OS shows its own confirmation dialog before deleting.
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(24.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(Color(0xCCB00020))
+                    .clickable(onClick = onDelete)
+                    .padding(horizontal = 24.dp, vertical = 12.dp),
+            ) {
+                Text("🗑  Delete", color = Color.White, style = MaterialTheme.typography.labelLarge)
             }
         }
     }

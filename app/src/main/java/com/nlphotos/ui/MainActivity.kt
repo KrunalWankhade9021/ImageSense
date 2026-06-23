@@ -174,6 +174,24 @@ private fun AppRoot() {
     var tab by rememberSaveable { mutableStateOf(0) } // 0=Photos, 1=Search
     var viewer by remember { mutableStateOf<Pair<Int, Int>?>(null) } // (sectionIdx, itemIdx)
 
+    // Delete flow: on Android 11+ the OS shows its own confirm dialog (via the
+    // IntentSender returned by MediaStore.createDeleteRequest); on success we
+    // purge the photo from the index. Pre-R deletes synchronously.
+    var pendingDelete by remember { mutableStateOf<Long?>(null) }
+    val deleteLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult(),
+    ) { result ->
+        if (result.resultCode == android.app.Activity.RESULT_OK) {
+            pendingDelete?.let { vm.onPhotoDeleted(it) }
+        }
+        pendingDelete = null
+    }
+    val onDelete: (Long, String) -> Unit = { photoId, uri ->
+        pendingDelete = photoId
+        val deletedNow = requestPhotoDelete(context, android.net.Uri.parse(uri), deleteLauncher)
+        if (deletedNow) { vm.onPhotoDeleted(photoId); pendingDelete = null }
+    }
+
     Scaffold(
         bottomBar = {
             NavigationBar {
@@ -199,6 +217,7 @@ private fun AppRoot() {
                     results = results, indexedCount = indexedCount, indexing = indexing,
                     indexDone = done, indexTotal = total, searching = searching,
                     onReindex = { reselectLauncher.launch(PHOTO_PERMISSIONS) },
+                    onDelete = onDelete,
                 )
             }
         }
@@ -210,7 +229,30 @@ private fun AppRoot() {
             PhotoViewerScreen(
                 items = flat, startIndex = i, onDismiss = { viewer = null },
                 onFindSimilar = { id -> vm.findSimilar(id); tab = 1 },
+                onDelete = { id, uri -> onDelete(id, uri); viewer = null },
             )
         }
+    }
+}
+
+/**
+ * Requests deletion of [uri]. Returns true if the photo was deleted synchronously
+ * (pre-Android-11); on Android 11+ it launches the system delete-confirm dialog
+ * via [launcher] and returns false (the result is handled by the launcher callback).
+ */
+private fun requestPhotoDelete(
+    context: android.content.Context,
+    uri: android.net.Uri,
+    launcher: androidx.activity.result.ActivityResultLauncher<androidx.activity.result.IntentSenderRequest>,
+): Boolean {
+    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        val pi = android.provider.MediaStore.createDeleteRequest(
+            context.contentResolver, listOf(uri),
+        )
+        launcher.launch(androidx.activity.result.IntentSenderRequest.Builder(pi.intentSender).build())
+        false
+    } else {
+        context.contentResolver.delete(uri, null, null)
+        true
     }
 }

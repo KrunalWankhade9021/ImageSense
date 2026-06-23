@@ -10,6 +10,11 @@
     <uses-permission
         android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
+    <!-- Pre-Android-11 only: direct delete fallback. On Android 11+ deletion goes
+         through MediaStore.createDeleteRequest (system confirm dialog), no write perm. -->
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="29" />
 
     <application
         android:name=".App"

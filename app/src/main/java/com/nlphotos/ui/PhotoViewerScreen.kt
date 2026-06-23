@@ -51,6 +51,7 @@ fun PhotoViewerScreen(
     startIndex: Int,
     onDismiss: () -> Unit,
     onFindSimilar: (Long) -> Unit,
+    onDelete: (photoId: Long, uri: String) -> Unit,
 ) {
     if (items.isEmpty()) return
     val context = LocalContext.current
@@ -103,6 +104,9 @@ fun PhotoViewerScreen(
                 TextButton(onClick = { showInfo = true }) { Text("Info", color = Color.White) }
                 TextButton(onClick = { onFindSimilar(current.photoId); onDismiss() }) {
                     Text("Find similar", color = Color.White)
+                }
+                TextButton(onClick = { onDelete(current.photoId, current.uri); onDismiss() }) {
+                    Text("Delete", color = Color(0xFFFF6E6E))
                 }
             }
 
