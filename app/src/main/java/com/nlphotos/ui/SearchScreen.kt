@@ -397,15 +397,17 @@ private fun FullScreenViewer(uri: String, onDismiss: () -> Unit, onDelete: () ->
             }
 
             // Delete action — the OS shows its own confirmation dialog before deleting.
+            // Fixed bottom offset (insets aren't dispatched inside a Dialog window,
+            // so navigationBarsPadding would be 0 and the button would clip behind
+            // the gesture bar).
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .navigationBarsPadding()
-                    .padding(24.dp)
+                    .padding(start = 24.dp, end = 24.dp, bottom = 56.dp)
                     .clip(RoundedCornerShape(50))
                     .background(Color(0xCCB00020))
                     .clickable(onClick = onDelete)
-                    .padding(horizontal = 24.dp, vertical = 12.dp),
+                    .padding(horizontal = 28.dp, vertical = 14.dp),
             ) {
                 Text("🗑  Delete", color = Color.White, style = MaterialTheme.typography.labelLarge)
             }

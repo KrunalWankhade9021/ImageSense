@@ -89,8 +89,11 @@ fun PhotoViewerScreen(
             // Bottom action bar
             val current = items[pager.currentPage]
             Row(
+                // Fixed bottom padding: WindowInsets aren't dispatched inside a Dialog,
+                // so navigationBarsPadding would be 0 and the row would clip behind the
+                // gesture bar.
                 modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()
-                    .background(Color(0x99000000)).navigationBarsPadding().padding(vertical = 14.dp),
+                    .background(Color(0x99000000)).padding(top = 14.dp, bottom = 48.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly,
             ) {
                 TextButton(onClick = {
