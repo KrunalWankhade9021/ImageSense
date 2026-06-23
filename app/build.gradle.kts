@@ -1,8 +1,33 @@
+import java.io.ByteArrayOutputStream
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("com.google.devtools.ksp")
 }
+
+// ── Version derived from git (single source of truth) ────────────────────────
+// versionName  = latest tag with the leading "v" stripped (e.g. v0.2.0 -> 0.2.0).
+//                Falls back to "0.0.0-dev" when there is no tag (local dev builds).
+// versionCode  = number of commits on HEAD — monotonically increases per commit,
+//                so every release built off a later commit gets a higher code.
+fun git(vararg args: String): String? = try {
+    val out = ByteArrayOutputStream()
+    val result = exec {
+        commandLine("git", *args)
+        standardOutput = out
+        errorOutput = ByteArrayOutputStream()
+        isIgnoreExitValue = true
+    }
+    if (result.exitValue == 0) out.toString().trim().ifEmpty { null } else null
+} catch (e: Exception) {
+    null
+}
+
+val gitVersionName: String =
+    (git("describe", "--tags", "--abbrev=0")?.removePrefix("v")) ?: "0.0.0-dev"
+val gitVersionCode: Int =
+    git("rev-list", "--count", "HEAD")?.toIntOrNull() ?: 1
 
 android {
     namespace = "com.nlphotos"
@@ -12,8 +37,8 @@ android {
         applicationId = "com.nlphotos"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1"
+        versionCode = gitVersionCode
+        versionName = gitVersionName
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // Ship only arm64 native libs (ONNX Runtime). Covers virtually all modern
         // Android phones and avoids bundling x86/armeabi variants we don't need.

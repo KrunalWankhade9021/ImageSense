@@ -14,6 +14,8 @@
     <application
         android:name=".App"
         android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:label="NLPhotos"
         android:largeHeap="true"
         android:supportsRtl="true">
