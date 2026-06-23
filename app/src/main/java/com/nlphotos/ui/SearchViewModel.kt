@@ -4,7 +4,10 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.nlphotos.data.IndexStore
+import com.nlphotos.gallery.GallerySection
+import com.nlphotos.gallery.groupByDate
 import com.nlphotos.ml.OnnxEmbeddingEngine
+import com.nlphotos.scan.PhotoScanner
 import com.nlphotos.model.Models
 import com.nlphotos.search.SearchEngine
 import com.nlphotos.search.SearchHit
@@ -26,9 +29,13 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
     private val store = IndexStore.create(application)
     private val buffer = VectorBuffer()
     private val searchEngine = SearchEngine(engine, buffer)
+    private val scanner = PhotoScanner(application)
 
     private val _indexedCount = MutableStateFlow(0)
     val indexedCount: StateFlow<Int> = _indexedCount.asStateFlow()
+
+    private val _gallery = MutableStateFlow<List<GallerySection>>(emptyList())
+    val gallery: StateFlow<List<GallerySection>> = _gallery.asStateFlow()
 
     private val _results = MutableStateFlow<List<SearchHit>>(emptyList())
     val results: StateFlow<List<SearchHit>> = _results.asStateFlow()
@@ -90,6 +97,30 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
                 if (_query.value == text) _results.value = hits
             } finally {
                 if (_query.value == text) _searching.value = false
+            }
+        }
+    }
+
+    /** Loads all device photos (MediaStore) into time-grouped sections. */
+    fun loadGallery() {
+        viewModelScope.launch {
+            val items = withContext(Dispatchers.IO) { scanner.scan() }
+            _gallery.value = withContext(Dispatchers.Default) {
+                groupByDate(items, System.currentTimeMillis())
+            }
+        }
+    }
+
+    /** Find photos similar to [photoId]; results surface on the Search tab. */
+    fun findSimilar(photoId: Long) {
+        viewModelScope.launch {
+            _query.value = "Similar photos"
+            _searching.value = true
+            try {
+                val hits = withContext(Dispatchers.Default) { searchEngine.findSimilar(photoId) }
+                _results.value = hits
+            } finally {
+                _searching.value = false
             }
         }
     }
