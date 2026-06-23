@@ -45,4 +45,15 @@ class VectorBuffer {
         val indices = (0 until size).sortedByDescending { scores[it] }.take(n)
         return indices.map { SearchHit(ids[it], uris[it], scores[it]) }
     }
+
+    /** The stored normalized vector for [photoId], or null if not indexed. */
+    fun vectorFor(photoId: Long): FloatArray? {
+        for (i in 0 until size) {
+            if (ids[i] == photoId) {
+                val c = i * dim
+                return data.copyOfRange(c, c + dim)
+            }
+        }
+        return null
+    }
 }
