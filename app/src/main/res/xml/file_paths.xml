@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
-    <external-path name="external" path="." />
-    <cache-path name="cache" path="." />
+    <!-- Scoped to our own cache dir only. Share uses MediaStore content URIs
+         directly, so this provider is a narrow fallback — never expose storage root. -->
+    <cache-path name="cache" path="shared/" />
 </paths>

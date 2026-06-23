@@ -113,14 +113,16 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
 
     /** Find photos similar to [photoId]; results surface on the Search tab. */
     fun findSimilar(photoId: Long) {
+        val tag = "Similar photos"
         viewModelScope.launch {
-            _query.value = "Similar photos"
+            _query.value = tag
             _searching.value = true
             try {
                 val hits = withContext(Dispatchers.Default) { searchEngine.findSimilar(photoId) }
-                _results.value = hits
+                // Ignore stale results if the user moved on (typed a query) meanwhile.
+                if (_query.value == tag) _results.value = hits
             } finally {
-                _searching.value = false
+                if (_query.value == tag) _searching.value = false
             }
         }
     }
