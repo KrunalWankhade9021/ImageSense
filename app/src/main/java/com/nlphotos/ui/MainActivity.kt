@@ -10,8 +10,15 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
@@ -22,6 +29,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -130,6 +138,7 @@ private fun AppRoot() {
             IndexWorker.enqueue(context.applicationContext)
             vm.loadBuffer()
             vm.warmUp() // build the text encoder ahead of the first search
+            vm.loadGallery()
         }
     }
 
@@ -144,7 +153,7 @@ private fun AppRoot() {
     val total = info?.progress?.getInt(IndexWorker.PROGRESS_TOTAL, 0) ?: 0
 
     LaunchedEffect(info?.state) {
-        if (info?.state == WorkInfo.State.SUCCEEDED) vm.loadBuffer()
+        if (info?.state == WorkInfo.State.SUCCEEDED) { vm.loadBuffer(); vm.loadGallery() }
     }
 
     if (!granted) {
@@ -160,17 +169,48 @@ private fun AppRoot() {
     val results by vm.results.collectAsState()
     val indexedCount by vm.indexedCount.collectAsState()
     val searching by vm.searching.collectAsState()
+    val gallery by vm.gallery.collectAsState()
 
-    SearchScreen(
-        query = query,
-        onQueryChange = vm::onQueryChange,
-        onSubmit = { vm.search(it) },
-        results = results,
-        indexedCount = indexedCount,
-        indexing = indexing,
-        indexDone = done,
-        indexTotal = total,
-        searching = searching,
-        onReindex = { reselectLauncher.launch(PHOTO_PERMISSIONS) },
-    )
+    var tab by rememberSaveable { mutableStateOf(0) } // 0=Photos, 1=Search
+    var viewer by remember { mutableStateOf<Pair<Int, Int>?>(null) } // (sectionIdx, itemIdx)
+
+    Scaffold(
+        bottomBar = {
+            NavigationBar {
+                NavigationBarItem(
+                    selected = tab == 0, onClick = { tab = 0 },
+                    icon = { Icon(Icons.Filled.Home, null) }, label = { Text("Photos") },
+                )
+                NavigationBarItem(
+                    selected = tab == 1, onClick = { tab = 1 },
+                    icon = { Icon(Icons.Filled.Search, null) }, label = { Text("Search") },
+                )
+            }
+        },
+    ) { pad ->
+        Box(Modifier.padding(pad)) {
+            when (tab) {
+                0 -> GalleryScreen(
+                    sections = gallery, indexing = indexing, indexDone = done, indexTotal = total,
+                    onOpen = { s, i -> viewer = s to i },
+                )
+                else -> SearchScreen(
+                    query = query, onQueryChange = vm::onQueryChange, onSubmit = { vm.search(it) },
+                    results = results, indexedCount = indexedCount, indexing = indexing,
+                    indexDone = done, indexTotal = total, searching = searching,
+                    onReindex = { reselectLauncher.launch(PHOTO_PERMISSIONS) },
+                )
+            }
+        }
+    }
+
+    viewer?.let { (s, i) ->
+        val flat = gallery.getOrNull(s)?.items ?: emptyList()
+        if (flat.isNotEmpty()) {
+            PhotoViewerScreen(
+                items = flat, startIndex = i, onDismiss = { viewer = null },
+                onFindSimilar = { id -> vm.findSimilar(id); tab = 1 },
+            )
+        }
+    }
 }
