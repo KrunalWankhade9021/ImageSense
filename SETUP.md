@@ -189,5 +189,6 @@ app/src/main/java/com/nlphotos/
   search/  VectorBuffer + SearchEngine (dot-product ranking)
   ui/      Compose search screen
 tools/     Python: model export, quantization, parity fixtures
-docs/superpowers/  design spec + implementation plan
+docs/design/      design specs
+docs/plans/       implementation plans
 ```

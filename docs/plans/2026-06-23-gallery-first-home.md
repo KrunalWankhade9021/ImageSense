@@ -1,7 +1,5 @@
 # Gallery-first Home (P0) Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Reframe the app as a gallery-first experience: open to a time-grouped photo grid (Photos tab), with NL search under a second tab, and a full-screen viewer offering Share / Info / Find similar.
 
 **Architecture:** A bottom-nav `Scaffold` hosts two tabs — Photos (MediaStore-backed grid, indexing-independent) and Search (existing flow). A full-screen viewer overlay sits above both. Find-similar reuses the existing in-memory `VectorBuffer`. Pure logic (date grouping, vector lookup, find-similar ranking) is TDD'd as JVM unit tests; Compose UI is verified by build + on-device check.
