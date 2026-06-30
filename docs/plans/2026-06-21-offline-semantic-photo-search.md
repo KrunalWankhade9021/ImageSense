@@ -1,7 +1,5 @@
 # Offline Semantic Photo Search Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** A fully offline Android app that finds photos by natural-language description of their content, with search accuracy as the top priority.
 
 **Architecture:** Native Kotlin app. A CLIP ViT-B/32 (fp16) model, split into image and text ONNX encoders, runs on-device via ONNX Runtime. Photos are indexed in the background (WorkManager) into a Room DB as L2-normalized 512-D vectors; search loads those vectors into a contiguous in-memory buffer and ranks by dot product. No network access exists in the app at all.
@@ -54,7 +52,7 @@ app/
 tools/
   export_model.py                                 # exports fp16 ONNX from open_clip
   make_parity_fixtures.py                          # reference embeddings for parity test
-docs/superpowers/...
+docs/design/, docs/plans/                          # design spec + implementation plan
 ```
 
 ---
