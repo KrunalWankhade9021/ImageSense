@@ -77,6 +77,7 @@ fun SearchScreen(
     onReindex: () -> Unit,
     onDelete: (photoId: Long, uri: String) -> Unit,
     onShare: (photoId: Long, uri: String) -> Unit,
+    recentSearches: List<String> = emptyList(),
 ) {
     var fullScreen by remember { mutableStateOf<SearchHit?>(null) }
 
@@ -116,7 +117,7 @@ fun SearchScreen(
         Spacer(Modifier.height(12.dp))
 
         when {
-            query.isBlank() -> EmptyState()
+            query.isBlank() -> EmptyState(recentSearches = recentSearches, onSubmit = onSubmit)
             searching -> SearchingState()
             results.isEmpty() -> CenterMessage(
                 title = "No matches",
@@ -297,7 +298,7 @@ private fun PhotoTile(uri: String, onClick: () -> Unit, onShare: () -> Unit) {
 }
 
 @Composable
-private fun EmptyState() {
+private fun EmptyState(recentSearches: List<String>, onSubmit: (String) -> Unit) {
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -318,6 +319,29 @@ private fun EmptyState() {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
             )
+            if (recentSearches.isNotEmpty()) {
+                Spacer(Modifier.height(24.dp))
+                Text(
+                    "Recent searches",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(12.dp))
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(recentSearches) { recentQuery ->
+                        SuggestionChip(
+                            onClick = { onSubmit(recentQuery) },
+                            label = { Text(recentQuery) },
+                            shape = RoundedCornerShape(50),
+                            colors = SuggestionChipDefaults.suggestionChipColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                labelColor = MaterialTheme.colorScheme.onSurface,
+                            ),
+                            border = null,
+                        )
+                    }
+                }
+            }
         }
     }
 }

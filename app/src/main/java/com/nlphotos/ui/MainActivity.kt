@@ -172,6 +172,7 @@ private fun AppRoot() {
     val indexedCount by vm.indexedCount.collectAsState()
     val searching by vm.searching.collectAsState()
     val gallery by vm.gallery.collectAsState()
+    val recentSearches by vm.recentSearches.collectAsState()
 
     var tab by rememberSaveable { mutableStateOf(0) } // 0=Photos, 1=Search
     var viewer by remember { mutableStateOf<Pair<Int, Int>?>(null) } // (sectionIdx, itemIdx)
@@ -231,6 +232,7 @@ private fun AppRoot() {
                     onReindex = { reselectLauncher.launch(PHOTO_PERMISSIONS) },
                     onDelete = onDelete,
                     onShare = onShare,
+                    recentSearches = recentSearches,
                 )
             }
         }

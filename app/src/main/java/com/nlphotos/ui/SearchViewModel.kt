@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.nlphotos.data.IndexStore
+import com.nlphotos.data.RecentSearchStore
 import com.nlphotos.gallery.GallerySection
 import com.nlphotos.gallery.groupByDate
 import com.nlphotos.ml.OnnxEmbeddingEngine
@@ -30,6 +31,7 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
     private val buffer = VectorBuffer()
     private val searchEngine = SearchEngine(engine, buffer)
     private val scanner = PhotoScanner(application)
+    private val recentStore = RecentSearchStore.create(application)
 
     private val _indexedCount = MutableStateFlow(0)
     val indexedCount: StateFlow<Int> = _indexedCount.asStateFlow()
@@ -45,6 +47,13 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
 
     private val _searching = MutableStateFlow(false)
     val searching: StateFlow<Boolean> = _searching.asStateFlow()
+
+    private val _recentSearches = MutableStateFlow<List<String>>(emptyList())
+    val recentSearches: StateFlow<List<String>> = _recentSearches.asStateFlow()
+
+    init {
+        loadRecentSearches()
+    }
 
     /**
      * Builds the text encoder in the background so the first search is fast
@@ -95,15 +104,6 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    fun search(text: String = _query.value) {
-        _query.value = text
-        if (text.isBlank()) {
-            _results.value = emptyList()
-            return
-        }
-        runSearch(text)
-    }
-
     private fun runSearch(text: String) {
         viewModelScope.launch {
             _searching.value = true
@@ -115,6 +115,32 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
                 if (_query.value == text) _searching.value = false
             }
         }
+    }
+
+    private fun loadRecentSearches() {
+        viewModelScope.launch {
+            recentStore.recentSearches.collect { list ->
+                _recentSearches.value = list
+            }
+        }
+    }
+
+    private fun saveRecentSearch(query: String) {
+        if (query.isNotBlank()) {
+            viewModelScope.launch {
+                recentStore.addSearch(query)
+            }
+        }
+    }
+
+    fun search(text: String = _query.value) {
+        _query.value = text
+        if (text.isBlank()) {
+            _results.value = emptyList()
+            return
+        }
+        saveRecentSearch(text)
+        runSearch(text)
     }
 
     /** Loads all device photos (MediaStore) into time-grouped sections. */
