@@ -3,7 +3,9 @@ package com.nlphotos.ui
 import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -37,6 +39,7 @@ fun GalleryScreen(
     indexDone: Int,
     indexTotal: Int,
     onOpen: (Int, Int) -> Unit,
+    onShare: (photoId: Long, uri: String) -> Unit,
 ) {
     Column(Modifier.fillMaxSize().statusBarsPadding().padding(horizontal = 12.dp)) {
         Row(indexing, indexDone, indexTotal)
@@ -62,11 +65,20 @@ fun GalleryScreen(
                     )
                 }
                 items(section.items.size) { iIdx ->
-                    val uri = section.items[iIdx].uri
+                    val item = section.items[iIdx]
+                    val uri = item.uri
+                    val photoId = item.photoId
                     Box(
-                        Modifier.aspectRatio(1f).clip(RoundedCornerShape(10.dp))
+                        Modifier
+                            .aspectRatio(1f)
+                            .clip(RoundedCornerShape(10.dp))
                             .background(MaterialTheme.colorScheme.surfaceVariant)
-                            .clickable { onOpen(sIdx, iIdx) },
+                            .pointerInput(Unit) {
+                                detectTapGestures(
+                                    onTap = { _ -> onOpen(sIdx, iIdx) },
+                                    onLongPress = { _ -> onShare(photoId, uri) }
+                                )
+                            },
                     ) {
                         AsyncImage(
                             model = Uri.parse(uri), contentDescription = null,

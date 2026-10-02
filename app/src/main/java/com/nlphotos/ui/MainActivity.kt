@@ -1,6 +1,8 @@
 package com.nlphotos.ui
 
 import android.Manifest
+import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -192,6 +194,15 @@ private fun AppRoot() {
         if (deletedNow) { vm.onPhotoDeleted(photoId); pendingDelete = null }
     }
 
+    val onShare: (Long, String) -> Unit = { _, uri ->
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "image/*"
+            putExtra(Intent.EXTRA_STREAM, Uri.parse(uri))
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(Intent.createChooser(intent, "Share via"))
+    }
+
     Scaffold(
         bottomBar = {
             NavigationBar {
@@ -211,6 +222,7 @@ private fun AppRoot() {
                 0 -> GalleryScreen(
                     sections = gallery, indexing = indexing, indexDone = done, indexTotal = total,
                     onOpen = { s, i -> viewer = s to i },
+                    onShare = onShare,
                 )
                 else -> SearchScreen(
                     query = query, onQueryChange = vm::onQueryChange, onSubmit = { vm.search(it) },
@@ -218,6 +230,7 @@ private fun AppRoot() {
                     indexDone = done, indexTotal = total, searching = searching,
                     onReindex = { reselectLauncher.launch(PHOTO_PERMISSIONS) },
                     onDelete = onDelete,
+                    onShare = onShare,
                 )
             }
         }

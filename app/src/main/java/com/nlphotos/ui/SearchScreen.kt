@@ -3,8 +3,10 @@ package com.nlphotos.ui
 import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -74,6 +76,7 @@ fun SearchScreen(
     searching: Boolean,
     onReindex: () -> Unit,
     onDelete: (photoId: Long, uri: String) -> Unit,
+    onShare: (photoId: Long, uri: String) -> Unit,
 ) {
     var fullScreen by remember { mutableStateOf<SearchHit?>(null) }
 
@@ -129,7 +132,11 @@ fun SearchScreen(
                     .navigationBarsPadding(),
             ) {
                 items(results, key = { it.photoId }) { hit ->
-                    PhotoTile(uri = hit.uri, onClick = { fullScreen = hit })
+                    PhotoTile(
+                        uri = hit.uri,
+                        onClick = { fullScreen = hit },
+                        onShare = { onShare(hit.photoId, hit.uri) }
+                    )
                 }
             }
         }
@@ -267,13 +274,18 @@ private fun IndexingBanner(done: Int, total: Int) {
 }
 
 @Composable
-private fun PhotoTile(uri: String, onClick: () -> Unit) {
+private fun PhotoTile(uri: String, onClick: () -> Unit, onShare: () -> Unit) {
     Box(
         modifier = Modifier
             .aspectRatio(1f)
             .clip(RoundedCornerShape(14.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant) // placeholder while loading
-            .clickable(onClick = onClick),
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onTap = { _ -> onClick() },
+                    onLongPress = { _ -> onShare() }
+                )
+            },
     ) {
         AsyncImage(
             model = Uri.parse(uri),
