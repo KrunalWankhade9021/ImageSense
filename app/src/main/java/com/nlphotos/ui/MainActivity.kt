@@ -9,22 +9,30 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.ui.graphics.Color
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -35,8 +43,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.work.WorkInfo
@@ -174,8 +185,8 @@ private fun AppRoot() {
     val gallery by vm.gallery.collectAsState()
     val recentSearches by vm.recentSearches.collectAsState()
 
-    var tab by rememberSaveable { mutableStateOf(0) } // 0=Photos, 1=Search
     var viewer by remember { mutableStateOf<Pair<Int, Int>?>(null) } // (sectionIdx, itemIdx)
+    var showSearchOverlay by remember { mutableStateOf(false) }
 
     // Delete flow: on Android 11+ the OS shows its own confirm dialog (via the
     // IntentSender returned by MediaStore.createDeleteRequest); on success we
@@ -204,31 +215,94 @@ private fun AppRoot() {
         context.startActivity(Intent.createChooser(intent, "Share via"))
     }
 
-    Scaffold(
-        bottomBar = {
-            NavigationBar {
-                NavigationBarItem(
-                    selected = tab == 0, onClick = { tab = 0 },
-                    icon = { Icon(Icons.Filled.Home, null) }, label = { Text("Photos") },
-                )
-                NavigationBarItem(
-                    selected = tab == 1, onClick = { tab = 1 },
-                    icon = { Icon(Icons.Filled.Search, null) }, label = { Text("Search") },
-                )
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .statusBarsPadding(),
+    ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            // Pinned search bar at top
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.surface)
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .clip(RoundedCornerShape(28.dp))
+                        .padding(horizontal = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Search,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Text(
+                        text = if (query.isEmpty()) "Search your photos…" else query,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = if (query.isEmpty()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                    )
+                    if (query.isNotEmpty()) {
+                        IconButton(onClick = { vm.onQueryChange("") }) {
+                            Icon(
+                                imageVector = Icons.Filled.Close,
+                                contentDescription = "Clear query",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    } else {
+                        IconButton(onClick = { showSearchOverlay = true }) {
+                            Icon(
+                                imageVector = Icons.Filled.Mic,
+                                contentDescription = "Voice search",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
             }
-        },
-    ) { pad ->
-        Box(Modifier.padding(pad)) {
-            when (tab) {
-                0 -> GalleryScreen(
-                    sections = gallery, indexing = indexing, indexDone = done, indexTotal = total,
-                    onOpen = { s, i -> viewer = s to i },
-                    onShare = onShare,
-                )
-                else -> SearchScreen(
-                    query = query, onQueryChange = vm::onQueryChange, onSubmit = { vm.search(it) },
-                    results = results, indexedCount = indexedCount, indexing = indexing,
-                    indexDone = done, indexTotal = total, searching = searching,
+
+            // Gallery content
+            GalleryScreen(
+                sections = gallery, indexing = indexing, indexDone = done, indexTotal = total,
+                onOpen = { s, i -> viewer = s to i },
+                onShare = onShare,
+            )
+        }
+
+        // Search overlay
+        if (showSearchOverlay) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color(0xCC000000))
+                    .clickable { showSearchOverlay = false },
+                contentAlignment = Alignment.TopCenter,
+            ) {
+                SearchScreen(
+                    query = query,
+                    onQueryChange = { text ->
+                        vm.onQueryChange(text)
+                        if (text.isNotEmpty()) showSearchOverlay = false
+                    },
+                    onSubmit = { text ->
+                        vm.search(text)
+                        showSearchOverlay = false
+                    },
+                    results = results,
+                    indexedCount = indexedCount,
+                    indexing = indexing,
+                    indexDone = done,
+                    indexTotal = total,
+                    searching = searching,
                     onReindex = { reselectLauncher.launch(PHOTO_PERMISSIONS) },
                     onDelete = onDelete,
                     onShare = onShare,
@@ -243,7 +317,7 @@ private fun AppRoot() {
         if (flat.isNotEmpty()) {
             PhotoViewerScreen(
                 items = flat, startIndex = i, onDismiss = { viewer = null },
-                onFindSimilar = { id -> vm.findSimilar(id); tab = 1 },
+                onFindSimilar = { id -> vm.findSimilar(id); showSearchOverlay = true },
                 onDelete = { id, uri -> onDelete(id, uri); viewer = null },
             )
         }

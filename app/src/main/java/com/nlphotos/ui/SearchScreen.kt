@@ -27,8 +27,17 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.outlined.History
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SuggestionChip
@@ -175,26 +184,27 @@ private fun Header(indexedCount: Int, onReindex: () -> Unit) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        ReindexChip(onClick = onReindex)
-        Spacer(Modifier.width(8.dp))
-        PrivacyChip()
+        OnDeviceChip()
     }
 }
 
 @Composable
-private fun ReindexChip(onClick: () -> Unit) {
+private fun OnDeviceChip() {
     Row(
         modifier = Modifier
             .clip(RoundedCornerShape(50))
             .background(MaterialTheme.colorScheme.surfaceVariant)
-            .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Text("➕", style = MaterialTheme.typography.labelMedium)
+        Icon(
+            imageVector = Icons.Filled.Shield,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+        )
         Text(
-            "Add photos",
+            "On-device",
             style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.onSurface,
             fontWeight = FontWeight.Medium,
@@ -202,27 +212,6 @@ private fun ReindexChip(onClick: () -> Unit) {
     }
 }
 
-@Composable
-private fun PrivacyChip() {
-    Row(
-        modifier = Modifier
-            .clip(RoundedCornerShape(50))
-            .background(MaterialTheme.colorScheme.primaryContainer)
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        Text("🔒", style = MaterialTheme.typography.labelMedium)
-        Text(
-            "Offline",
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onPrimaryContainer,
-            fontWeight = FontWeight.Medium,
-        )
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SearchBar(
     query: String,
@@ -234,10 +223,30 @@ private fun SearchBar(
         onValueChange = onQueryChange,
         modifier = Modifier.fillMaxWidth(),
         placeholder = { Text("Search your photos…") },
-        leadingIcon = { Text("🔍") },
+        leadingIcon = {
+            Icon(
+                imageVector = Icons.Filled.Search,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        },
         trailingIcon = {
             if (query.isNotEmpty()) {
-                TextButton(onClick = { onQueryChange("") }) { Text("Clear") }
+                IconButton(onClick = { onQueryChange("") }) {
+                    Icon(
+                        imageVector = Icons.Filled.Close,
+                        contentDescription = "Clear query",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            } else {
+                IconButton(onClick = { /* TODO: voice search */ }) {
+                    Icon(
+                        imageVector = Icons.Filled.Mic,
+                        contentDescription = "Voice search",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         },
         singleLine = true,
@@ -429,7 +438,17 @@ private fun FullScreenViewer(uri: String, onDismiss: () -> Unit, onDelete: () ->
                     .clickable(onClick = onDismiss)
                     .padding(horizontal = 16.dp, vertical = 8.dp),
             ) {
-                Text("Close", color = Color.White, style = MaterialTheme.typography.labelLarge)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Close,
+                        contentDescription = null,
+                        tint = Color.White,
+                    )
+                    Text("Close", color = Color.White, style = MaterialTheme.typography.labelLarge)
+                }
             }
 
             // Delete action — the OS shows its own confirmation dialog before deleting.
@@ -445,7 +464,17 @@ private fun FullScreenViewer(uri: String, onDismiss: () -> Unit, onDelete: () ->
                     .clickable(onClick = onDelete)
                     .padding(horizontal = 28.dp, vertical = 14.dp),
             ) {
-                Text("🗑  Delete", color = Color.White, style = MaterialTheme.typography.labelLarge)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Delete,
+                        contentDescription = null,
+                        tint = Color.White,
+                    )
+                    Text("Delete", color = Color.White, style = MaterialTheme.typography.labelLarge)
+                }
             }
         }
     }

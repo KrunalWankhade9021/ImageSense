@@ -19,7 +19,14 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
@@ -84,7 +91,19 @@ fun PhotoViewerScreen(
                 modifier = Modifier.align(Alignment.TopStart).padding(12.dp)
                     .background(Color(0x66000000), MaterialTheme.shapes.small)
                     .clickable(onClick = onDismiss).padding(horizontal = 14.dp, vertical = 8.dp),
-            ) { Text("Close", color = Color.White, style = MaterialTheme.typography.labelLarge) }
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Close,
+                        contentDescription = null,
+                        tint = Color.White,
+                    )
+                    Text("Close", color = Color.White, style = MaterialTheme.typography.labelLarge)
+                }
+            }
 
             // Bottom action bar
             val current = items[pager.currentPage]
@@ -103,13 +122,57 @@ fun PhotoViewerScreen(
                         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                     }
                     context.startActivity(Intent.createChooser(send, "Share photo"))
-                }) { Text("Share", color = Color.White) }
-                TextButton(onClick = { showInfo = true }) { Text("Info", color = Color.White) }
+                }) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Share,
+                            contentDescription = null,
+                            tint = Color.White,
+                        )
+                        Text("Share", color = Color.White)
+                    }
+                }
+                TextButton(onClick = { showInfo = true }) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Info,
+                            contentDescription = null,
+                            tint = Color.White,
+                        )
+                        Text("Info", color = Color.White)
+                    }
+                }
                 TextButton(onClick = { onFindSimilar(current.photoId); onDismiss() }) {
-                    Text("Find similar", color = Color.White)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Search,
+                            contentDescription = null,
+                            tint = Color.White,
+                        )
+                        Text("Find similar", color = Color.White)
+                    }
                 }
                 TextButton(onClick = { onDelete(current.photoId, current.uri); onDismiss() }) {
-                    Text("Delete", color = Color(0xFFFF6E6E))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Delete,
+                            contentDescription = null,
+                            tint = Color(0xFFFF6E6E),
+                        )
+                        Text("Delete", color = Color(0xFFFF6E6E))
+                    }
                 }
             }
 
