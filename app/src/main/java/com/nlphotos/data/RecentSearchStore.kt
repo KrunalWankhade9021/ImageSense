@@ -56,6 +56,18 @@ class RecentSearchStore private constructor(
         _recentSearches.value = list
     }
 
+    suspend fun removeSearch(query: String) = withContext(Dispatchers.IO) {
+        val list = _recentSearches.value.filterNot { it == query }
+        val editor = prefs.edit()
+        editor.clear()
+        list.forEachIndexed { idx, q ->
+            editor.putString("search_$idx", q)
+        }
+        editor.apply()
+
+        _recentSearches.value = list
+    }
+
     suspend fun clearAll() = withContext(Dispatchers.IO) {
         prefs.edit().clear().apply()
         _recentSearches.value = emptyList()

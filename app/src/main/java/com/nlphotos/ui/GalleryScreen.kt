@@ -15,7 +15,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
@@ -42,14 +42,10 @@ import com.nlphotos.gallery.GallerySection
 @Composable
 fun GalleryScreen(
     sections: List<GallerySection>,
-    indexing: Boolean,
-    indexDone: Int,
-    indexTotal: Int,
     onOpen: (Int, Int) -> Unit,
     onShare: (photoId: Long, uri: String) -> Unit,
 ) {
-    Column(Modifier.fillMaxSize().statusBarsPadding().padding(horizontal = 12.dp)) {
-        Row(indexing, indexDone, indexTotal)
+    Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
         if (sections.isEmpty()) {
             EmptyGallery(); return
         }
@@ -58,7 +54,8 @@ fun GalleryScreen(
             horizontalArrangement = Arrangement.spacedBy(4.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
             contentPadding = PaddingValues(bottom = 24.dp),
-            modifier = Modifier.fillMaxSize(),
+            // Last row scrolls clear of the gesture bar (we draw edge-to-edge).
+            modifier = Modifier.fillMaxSize().navigationBarsPadding(),
         ) {
             sections.forEachIndexed { sIdx, section ->
                 item(span = { GridItemSpan(maxLineSpan) }) {
@@ -67,8 +64,7 @@ fun GalleryScreen(
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.fillMaxWidth()
-                            .background(MaterialTheme.colorScheme.background)
-                            .padding(vertical = 8.dp),
+                            .padding(top = if (sIdx == 0) 4.dp else 16.dp, bottom = 8.dp),
                     )
                 }
                 items(section.items.size) { iIdx ->
@@ -93,28 +89,6 @@ fun GalleryScreen(
                         )
                     }
                 }
-            }
-        }
-    }
-}
-
-@Composable
-private fun Row(indexing: Boolean, done: Int, total: Int) {
-    androidx.compose.foundation.layout.Row(
-        Modifier.fillMaxWidth().padding(vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text("Photos", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.weight(1f))
-        if (indexing) {
-            Box(
-                Modifier.clip(RoundedCornerShape(50))
-                    .background(MaterialTheme.colorScheme.primaryContainer)
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
-            ) {
-                val label = if (total > 0) "Search ready $done / $total" else "Preparing search…"
-                Text(label, style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer)
             }
         }
     }

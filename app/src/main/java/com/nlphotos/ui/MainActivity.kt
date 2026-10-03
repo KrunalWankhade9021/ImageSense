@@ -1,14 +1,26 @@
 package com.nlphotos.ui
 
 import android.Manifest
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.speech.RecognizerIntent
+import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -18,6 +30,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
@@ -46,6 +59,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -101,10 +115,19 @@ private val NlPhotosColors = darkColorScheme(
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Draw behind the status / navigation bars so the whole screen is one
+        // continuous background instead of a differently-tinted system strip.
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+        )
         super.onCreate(savedInstanceState)
         setContent {
             MaterialTheme(colorScheme = NlPhotosColors) {
-                Surface(modifier = Modifier.fillMaxSize()) {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background,
+                ) {
                     AppRoot()
                 }
             }
@@ -184,9 +207,11 @@ private fun AppRoot() {
     val searching by vm.searching.collectAsState()
     val gallery by vm.gallery.collectAsState()
     val recentSearches by vm.recentSearches.collectAsState()
+    val submittedQuery by vm.submittedQuery.collectAsState()
+    val explore by vm.explore.collectAsState()
 
     var viewer by remember { mutableStateOf<Pair<Int, Int>?>(null) } // (sectionIdx, itemIdx)
-    var showSearchOverlay by remember { mutableStateOf(false) }
+    var searchActive by remember { mutableStateOf(false) }
 
     // Delete flow: on Android 11+ the OS shows its own confirm dialog (via the
     // IntentSender returned by MediaStore.createDeleteRequest); on success we
@@ -215,98 +240,95 @@ private fun AppRoot() {
         context.startActivity(Intent.createChooser(intent, "Share via"))
     }
 
-    Box(
+    // Voice search via the system speech recognizer (offline preferred). The
+    // recognized text is run as a normal search inside the search overlay.
+    val voiceLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        val spoken = result.data
+            ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+            ?.firstOrNull()
+        if (result.resultCode == android.app.Activity.RESULT_OK && !spoken.isNullOrBlank()) {
+            vm.search(spoken)
+            searchActive = true
+        }
+    }
+    val onVoiceSearch: () -> Unit = {
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
+            putExtra(RecognizerIntent.EXTRA_PROMPT, "Describe the photo")
+        }
+        try {
+            voiceLauncher.launch(intent)
+        } catch (e: ActivityNotFoundException) {
+            Toast.makeText(context, "Voice search isn't available on this device", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    val focusManager = LocalFocusManager.current
+    val exitSearch = {
+        focusManager.clearFocus()
+        vm.clearSearch()
+        searchActive = false
+    }
+    BackHandler(enabled = searchActive) { exitSearch() }
+
+    Column(
         modifier = Modifier
             .fillMaxSize()
             .statusBarsPadding(),
     ) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            // Pinned search bar at top
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(MaterialTheme.colorScheme.surface)
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(MaterialTheme.colorScheme.surfaceVariant)
-                        .clip(RoundedCornerShape(28.dp))
-                        .padding(horizontal = 16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Search,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Spacer(Modifier.width(12.dp))
-                    Text(
-                        text = if (query.isEmpty()) "Search your photos…" else query,
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = if (query.isEmpty()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f),
-                    )
-                    if (query.isNotEmpty()) {
-                        IconButton(onClick = { vm.onQueryChange("") }) {
-                            Icon(
-                                imageVector = Icons.Filled.Close,
-                                contentDescription = "Clear query",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    } else {
-                        IconButton(onClick = { showSearchOverlay = true }) {
-                            Icon(
-                                imageVector = Icons.Filled.Mic,
-                                contentDescription = "Voice search",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-                }
-            }
+        // One search bar shared by Home and Search, so opening search expands
+        // in place instead of navigating to a different-looking screen.
+        TopSearchArea(
+            searchActive = searchActive,
+            query = query,
+            indexedCount = indexedCount,
+            indexing = indexing,
+            indexDone = done,
+            indexTotal = total,
+            onQueryChange = vm::onQueryChange,
+            onSubmit = { text ->
+                vm.search(text)
+                focusManager.clearFocus() // drop the keyboard so results are visible
+            },
+            onActivate = { searchActive = true },
+            onBack = exitSearch,
+            onVoiceSearch = onVoiceSearch,
+        )
 
-            // Gallery content
-            GalleryScreen(
-                sections = gallery, indexing = indexing, indexDone = done, indexTotal = total,
-                onOpen = { s, i -> viewer = s to i },
-                onShare = onShare,
-            )
-        }
-
-        // Search overlay
-        if (showSearchOverlay) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color(0xCC000000))
-                    .clickable { showSearchOverlay = false },
-                contentAlignment = Alignment.TopCenter,
-            ) {
-                SearchScreen(
+        AnimatedContent(
+            targetState = searchActive,
+            transitionSpec = {
+                (fadeIn(tween(220)) + slideInVertically(tween(220)) { it / 24 }) togetherWith
+                    fadeOut(tween(150))
+            },
+            modifier = Modifier.fillMaxSize(),
+            label = "homeOrSearch",
+        ) { active ->
+            if (active) {
+                SearchContent(
                     query = query,
-                    onQueryChange = { text ->
-                        vm.onQueryChange(text)
-                        if (text.isNotEmpty()) showSearchOverlay = false
-                    },
+                    submittedQuery = submittedQuery,
+                    results = results,
+                    searching = searching,
+                    indexing = indexing,
+                    recentSearches = recentSearches,
+                    explore = explore,
                     onSubmit = { text ->
                         vm.search(text)
-                        showSearchOverlay = false
+                        focusManager.clearFocus()
                     },
-                    results = results,
-                    indexedCount = indexedCount,
-                    indexing = indexing,
-                    indexDone = done,
-                    indexTotal = total,
-                    searching = searching,
-                    onReindex = { reselectLauncher.launch(PHOTO_PERMISSIONS) },
+                    onRemoveRecent = vm::removeRecentSearch,
                     onDelete = onDelete,
                     onShare = onShare,
-                    recentSearches = recentSearches,
+                )
+            } else {
+                GalleryScreen(
+                    sections = gallery,
+                    onOpen = { s, i -> viewer = s to i },
+                    onShare = onShare,
                 )
             }
         }
@@ -317,7 +339,7 @@ private fun AppRoot() {
         if (flat.isNotEmpty()) {
             PhotoViewerScreen(
                 items = flat, startIndex = i, onDismiss = { viewer = null },
-                onFindSimilar = { id -> vm.findSimilar(id); showSearchOverlay = true },
+                onFindSimilar = { id -> vm.findSimilar(id); searchActive = true },
                 onDelete = { id, uri -> onDelete(id, uri); viewer = null },
             )
         }
