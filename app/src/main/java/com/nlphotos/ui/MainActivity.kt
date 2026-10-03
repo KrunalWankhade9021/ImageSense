@@ -58,6 +58,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.unit.dp
@@ -267,6 +268,9 @@ private fun AppRoot() {
     }
 
     val focusManager = LocalFocusManager.current
+    val headerState = rememberCollapsingHeaderState()
+    // Coming back to Home always shows the full header.
+    LaunchedEffect(searchActive) { if (!searchActive) headerState.reset() }
     val exitSearch = {
         focusManager.clearFocus()
         vm.clearSearch()
@@ -277,7 +281,8 @@ private fun AppRoot() {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .statusBarsPadding(),
+            .statusBarsPadding()
+            .nestedScroll(headerState.nestedScrollConnection),
     ) {
         // One search bar shared by Home and Search, so opening search expands
         // in place instead of navigating to a different-looking screen.
@@ -296,6 +301,7 @@ private fun AppRoot() {
             onActivate = { searchActive = true },
             onBack = exitSearch,
             onVoiceSearch = onVoiceSearch,
+            headerState = headerState,
         )
 
         AnimatedContent(

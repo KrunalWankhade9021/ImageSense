@@ -43,8 +43,11 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -74,6 +77,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.runtime.Stable
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.layout.layout
+import kotlin.math.roundToInt
 import coil.compose.AsyncImage
 import com.nlphotos.search.SearchHit
 
@@ -95,6 +105,7 @@ fun TopSearchArea(
     onActivate: () -> Unit,
     onBack: () -> Unit,
     onVoiceSearch: () -> Unit,
+    headerState: CollapsingHeaderState,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -108,11 +119,15 @@ fun TopSearchArea(
             enter = expandVertically() + fadeIn(),
             exit = shrinkVertically() + fadeOut(),
         ) {
-            HomeHeader(indexedCount, indexing, indexDone, indexTotal)
+            // Scrolls away with the gallery; the search bar below stays pinned.
+            Box(Modifier.collapsing(headerState)) {
+                HomeHeader(indexing, indexDone, indexTotal)
+            }
         }
         Spacer(Modifier.height(8.dp))
         SearchField(
             searchActive = searchActive,
+            indexedCount = indexedCount,
             query = query,
             onQueryChange = onQueryChange,
             onSubmit = onSubmit,
@@ -124,8 +139,54 @@ fun TopSearchArea(
     }
 }
 
+/**
+ * Collapsing state for the Home header: gallery scrolls first collapse the
+ * header (up to its full height), and it re-expands only once the gallery is
+ * back at the top — so the pinned search bar is the only chrome while browsing.
+ */
+@Stable
+class CollapsingHeaderState {
+    var heightPx by mutableFloatStateOf(0f)
+        internal set
+    var offsetPx by mutableFloatStateOf(0f) // in [-heightPx, 0]
+        private set
+
+    fun reset() { offsetPx = 0f }
+
+    private fun consume(delta: Float): Float {
+        val new = (offsetPx + delta).coerceIn(-heightPx, 0f)
+        val used = new - offsetPx
+        offsetPx = new
+        return used
+    }
+
+    val nestedScrollConnection = object : NestedScrollConnection {
+        override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset =
+            if (available.y < 0) Offset(0f, consume(available.y)) else Offset.Zero
+
+        override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset =
+            if (available.y > 0) Offset(0f, consume(available.y)) else Offset.Zero
+    }
+}
+
 @Composable
-private fun HomeHeader(indexedCount: Int, indexing: Boolean, done: Int, total: Int) {
+fun rememberCollapsingHeaderState() = remember { CollapsingHeaderState() }
+
+/** Lays the content out shortened (and slid up) by the header's scroll offset. */
+private fun Modifier.collapsing(state: CollapsingHeaderState) = this
+    .clipToBounds()
+    .layout { measurable, constraints ->
+        val placeable = measurable.measure(constraints)
+        state.heightPx = placeable.height.toFloat()
+        val offset = state.offsetPx.roundToInt()
+        layout(placeable.width, (placeable.height + offset).coerceAtLeast(0)) {
+            placeable.place(0, offset)
+        }
+    }
+    .graphicsLayer { alpha = if (state.heightPx > 0f) 1f + state.offsetPx / state.heightPx else 1f }
+
+@Composable
+private fun HomeHeader(indexing: Boolean, done: Int, total: Int) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -138,42 +199,98 @@ private fun HomeHeader(indexedCount: Int, indexing: Boolean, done: Int, total: I
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.SemiBold,
             )
-            Text(
-                text = when {
-                    indexing && total > 0 -> "Getting photos ready · $done of $total"
-                    indexing -> "Getting photos ready…"
-                    else -> "$indexedCount photos searchable"
-                },
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            // Only worth a line while it's changing; the count lives in the search placeholder.
+            if (indexing) {
+                Text(
+                    text = if (total > 0) "Getting photos ready · $done of $total" else "Getting photos ready…",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
-        Row(
-            modifier = Modifier
-                .clip(RoundedCornerShape(50))
-                .background(MaterialTheme.colorScheme.primaryContainer)
-                .padding(horizontal = 10.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        OnDeviceBadge()
+    }
+}
+
+/**
+ * Neutral "On-device" pill (secondary context, so it shouldn't outshine the
+ * title or search bar). Tapping it explains the privacy guarantee.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun OnDeviceBadge() {
+    var showSheet by remember { mutableStateOf(false) }
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(50))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .clickable { showSheet = true }
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Icon(
+            imageVector = Icons.Outlined.Lock,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(14.dp),
+        )
+        Text(
+            "On-device",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+
+    if (showSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showSheet = false },
+            containerColor = MaterialTheme.colorScheme.surface,
         ) {
-            Icon(
-                imageVector = Icons.Filled.Shield,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(16.dp),
-            )
-            Text(
-                "On-device",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onPrimaryContainer,
-            )
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(start = 24.dp, end = 24.dp, bottom = 32.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Lock,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(28.dp),
+                )
+                Spacer(Modifier.height(16.dp))
+                Text(
+                    "Your photos never leave this phone",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Spacer(Modifier.height(16.dp))
+                PrivacyPoint("Search runs entirely on your device — photos are understood by an AI model stored inside the app.")
+                PrivacyPoint("ImageSense has no internet permission, so it can't upload anything, even by accident.")
+                PrivacyPoint("No account, no cloud, no tracking.")
+            }
         }
+    }
+}
+
+@Composable
+private fun PrivacyPoint(text: String) {
+    Row(Modifier.padding(vertical = 6.dp)) {
+        Icon(
+            imageVector = Icons.Filled.Check,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(18.dp).padding(top = 2.dp),
+        )
+        Spacer(Modifier.width(12.dp))
+        Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
 @Composable
 private fun SearchField(
     searchActive: Boolean,
+    indexedCount: Int,
     query: String,
     onQueryChange: (String) -> Unit,
     onSubmit: (String) -> Unit,
@@ -189,7 +306,11 @@ private fun SearchField(
             .onFocusChanged { if (it.isFocused) onActivate() },
         placeholder = {
             Text(
-                if (searchActive) "Describe a photo…" else "Search your photos",
+                when {
+                    searchActive -> "Describe a photo…"
+                    indexedCount > 0 -> "Search $indexedCount photos"
+                    else -> "Search your photos"
+                },
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )

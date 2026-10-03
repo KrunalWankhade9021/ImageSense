@@ -2,6 +2,8 @@ package com.nlphotos.ui
 
 import android.net.Uri
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -31,6 +33,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -51,21 +54,15 @@ fun GalleryScreen(
         }
         LazyVerticalGrid(
             columns = GridCells.Adaptive(112.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
             contentPadding = PaddingValues(bottom = 24.dp),
             // Last row scrolls clear of the gesture bar (we draw edge-to-edge).
             modifier = Modifier.fillMaxSize().navigationBarsPadding(),
         ) {
             sections.forEachIndexed { sIdx, section ->
                 item(span = { GridItemSpan(maxLineSpan) }) {
-                    Text(
-                        section.label,
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.fillMaxWidth()
-                            .padding(top = if (sIdx == 0) 4.dp else 16.dp, bottom = 8.dp),
-                    )
+                    SectionHeader(section.label, section.items.size, first = sIdx == 0)
                 }
                 items(section.items.size) { iIdx ->
                     val item = section.items[iIdx]
@@ -74,7 +71,7 @@ fun GalleryScreen(
                     Box(
                         Modifier
                             .aspectRatio(1f)
-                            .clip(RoundedCornerShape(10.dp))
+                            .clip(TileShape)
                             .background(MaterialTheme.colorScheme.surfaceVariant)
                             .pointerInput(Unit) {
                                 detectTapGestures(
@@ -87,9 +84,42 @@ fun GalleryScreen(
                             model = Uri.parse(uri), contentDescription = null,
                             contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(),
                         )
+                        TileOutline()
                     }
                 }
             }
+        }
+    }
+}
+
+/** Small corners + tight gaps so the grid reads as one block, like a camera roll. */
+internal val TileShape = RoundedCornerShape(4.dp)
+
+/**
+ * Hairline edge drawn over a tile so dark photos (screenshots, night shots)
+ * still read as a distinct square against the dark background.
+ */
+@Composable
+internal fun TileOutline() {
+    Box(Modifier.fillMaxSize().border(1.dp, Color.White.copy(alpha = 0.08f), TileShape))
+}
+
+/** Date section title with a muted count; more air above than below so it binds to its photos. */
+@Composable
+internal fun SectionHeader(title: String, count: Int? = null, first: Boolean = false) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = if (first) 4.dp else 24.dp, bottom = 10.dp),
+        verticalAlignment = Alignment.Bottom,
+    ) {
+        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        if (count != null) {
+            Text(
+                "  ·  $count",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }
