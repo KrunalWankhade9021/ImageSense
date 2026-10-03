@@ -1,8 +1,16 @@
 package com.nlphotos.ui
 
 import android.net.Uri
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.layout.Arrangement
@@ -15,24 +23,36 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyGridScope
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SuggestionChip
-import androidx.compose.material3.SuggestionChipDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
@@ -44,92 +64,373 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.runtime.Stable
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.layout.layout
+import kotlin.math.roundToInt
 import coil.compose.AsyncImage
 import com.nlphotos.search.SearchHit
 
-private val EXAMPLE_QUERIES = listOf(
-    "Lake", "Beach", "Documents", "Screenshots", "Food", "People", "Sunset", "Cars",
-)
-
-@OptIn(ExperimentalMaterial3Api::class)
+/**
+ * The top of the app, shared by Home and Search so the search bar never jumps:
+ * on Home a brand header sits above the bar; when search is active the header
+ * collapses away and the bar slides up into its place.
+ */
 @Composable
-fun SearchScreen(
+fun TopSearchArea(
+    searchActive: Boolean,
     query: String,
-    onQueryChange: (String) -> Unit,
-    onSubmit: (String) -> Unit,
-    results: List<SearchHit>,
     indexedCount: Int,
     indexing: Boolean,
     indexDone: Int,
     indexTotal: Int,
-    searching: Boolean,
-    onReindex: () -> Unit,
-    onDelete: (photoId: Long, uri: String) -> Unit,
+    onQueryChange: (String) -> Unit,
+    onSubmit: (String) -> Unit,
+    onActivate: () -> Unit,
+    onBack: () -> Unit,
+    onVoiceSearch: () -> Unit,
+    headerState: CollapsingHeaderState,
+    modifier: Modifier = Modifier,
 ) {
-    var fullScreen by remember { mutableStateOf<SearchHit?>(null) }
-
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .statusBarsPadding()
+        modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.background)
             .padding(horizontal = 16.dp),
     ) {
-        Header(indexedCount = indexedCount, onReindex = onReindex)
+        AnimatedVisibility(
+            visible = !searchActive,
+            enter = expandVertically() + fadeIn(),
+            exit = shrinkVertically() + fadeOut(),
+        ) {
+            // Scrolls away with the gallery; the search bar below stays pinned.
+            Box(Modifier.collapsing(headerState)) {
+                HomeHeader(indexing, indexDone, indexTotal)
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        SearchField(
+            searchActive = searchActive,
+            indexedCount = indexedCount,
+            query = query,
+            onQueryChange = onQueryChange,
+            onSubmit = onSubmit,
+            onActivate = onActivate,
+            onBack = onBack,
+            onVoiceSearch = onVoiceSearch,
+        )
+        Spacer(Modifier.height(8.dp))
+    }
+}
 
-        Spacer(Modifier.height(12.dp))
+/**
+ * Collapsing state for the Home header: gallery scrolls first collapse the
+ * header (up to its full height), and it re-expands only once the gallery is
+ * back at the top — so the pinned search bar is the only chrome while browsing.
+ */
+@Stable
+class CollapsingHeaderState {
+    var heightPx by mutableFloatStateOf(0f)
+        internal set
+    var offsetPx by mutableFloatStateOf(0f) // in [-heightPx, 0]
+        private set
 
-        SearchBar(query = query, onQueryChange = onQueryChange, onSubmit = onSubmit)
+    fun reset() { offsetPx = 0f }
 
-        Spacer(Modifier.height(12.dp))
+    private fun consume(delta: Float): Float {
+        val new = (offsetPx + delta).coerceIn(-heightPx, 0f)
+        val used = new - offsetPx
+        offsetPx = new
+        return used
+    }
 
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(EXAMPLE_QUERIES) { label ->
-                SuggestionChip(
-                    onClick = { onSubmit(label) },
-                    label = { Text(label) },
-                    shape = RoundedCornerShape(50),
-                    colors = SuggestionChipDefaults.suggestionChipColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                        labelColor = MaterialTheme.colorScheme.onSurface,
-                    ),
-                    border = null,
+    val nestedScrollConnection = object : NestedScrollConnection {
+        override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset =
+            if (available.y < 0) Offset(0f, consume(available.y)) else Offset.Zero
+
+        override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset =
+            if (available.y > 0) Offset(0f, consume(available.y)) else Offset.Zero
+    }
+}
+
+@Composable
+fun rememberCollapsingHeaderState() = remember { CollapsingHeaderState() }
+
+/** Lays the content out shortened (and slid up) by the header's scroll offset. */
+private fun Modifier.collapsing(state: CollapsingHeaderState) = this
+    .clipToBounds()
+    .layout { measurable, constraints ->
+        val placeable = measurable.measure(constraints)
+        state.heightPx = placeable.height.toFloat()
+        val offset = state.offsetPx.roundToInt()
+        layout(placeable.width, (placeable.height + offset).coerceAtLeast(0)) {
+            placeable.place(0, offset)
+        }
+    }
+    .graphicsLayer { alpha = if (state.heightPx > 0f) 1f + state.offsetPx / state.heightPx else 1f }
+
+@Composable
+private fun HomeHeader(indexing: Boolean, done: Int, total: Int) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 12.dp, bottom = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "ImageSense",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.SemiBold,
+            )
+            // Only worth a line while it's changing; the count lives in the search placeholder.
+            if (indexing) {
+                Text(
+                    text = if (total > 0) "Getting photos ready · $done of $total" else "Getting photos ready…",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
+        OnDeviceBadge()
+    }
+}
 
-        if (indexing) {
-            IndexingBanner(done = indexDone, total = indexTotal)
+/**
+ * Neutral "On-device" pill (secondary context, so it shouldn't outshine the
+ * title or search bar). Tapping it explains the privacy guarantee.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun OnDeviceBadge() {
+    var showSheet by remember { mutableStateOf(false) }
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(50))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .clickable { showSheet = true }
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Icon(
+            imageVector = Icons.Outlined.Lock,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(14.dp),
+        )
+        Text(
+            "On-device",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+
+    if (showSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showSheet = false },
+            containerColor = MaterialTheme.colorScheme.surface,
+        ) {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(start = 24.dp, end = 24.dp, bottom = 32.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Lock,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(28.dp),
+                )
+                Spacer(Modifier.height(16.dp))
+                Text(
+                    "Your photos never leave this phone",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Spacer(Modifier.height(16.dp))
+                PrivacyPoint("Search runs entirely on your device — photos are understood by an AI model stored inside the app.")
+                PrivacyPoint("ImageSense has no internet permission, so it can't upload anything, even by accident.")
+                PrivacyPoint("No account, no cloud, no tracking.")
+            }
         }
+    }
+}
 
-        Spacer(Modifier.height(12.dp))
+@Composable
+private fun PrivacyPoint(text: String) {
+    Row(Modifier.padding(vertical = 6.dp)) {
+        Icon(
+            imageVector = Icons.Filled.Check,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(18.dp).padding(top = 2.dp),
+        )
+        Spacer(Modifier.width(12.dp))
+        Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
 
-        when {
-            query.isBlank() -> EmptyState()
-            searching -> SearchingState()
-            results.isEmpty() -> CenterMessage(
-                title = "No matches",
-                subtitle = "Nothing matched “$query”. Try another word.",
+@Composable
+private fun SearchField(
+    searchActive: Boolean,
+    indexedCount: Int,
+    query: String,
+    onQueryChange: (String) -> Unit,
+    onSubmit: (String) -> Unit,
+    onActivate: () -> Unit,
+    onBack: () -> Unit,
+    onVoiceSearch: () -> Unit,
+) {
+    TextField(
+        value = query,
+        onValueChange = onQueryChange,
+        modifier = Modifier
+            .fillMaxWidth()
+            .onFocusChanged { if (it.isFocused) onActivate() },
+        placeholder = {
+            Text(
+                when {
+                    searchActive -> "Describe a photo…"
+                    indexedCount > 0 -> "Search $indexedCount photos"
+                    else -> "Search your photos"
+                },
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
-            else -> LazyVerticalGrid(
+        },
+        leadingIcon = {
+            AnimatedContent(
+                targetState = searchActive,
+                transitionSpec = { fadeIn() togetherWith fadeOut() },
+                label = "leadingIcon",
+            ) { active ->
+                if (active) {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Close search",
+                            tint = MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
+                } else {
+                    Icon(
+                        imageVector = Icons.Filled.Search,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        },
+        trailingIcon = {
+            if (query.isNotEmpty()) {
+                IconButton(onClick = { onQueryChange("") }) {
+                    Icon(
+                        imageVector = Icons.Filled.Close,
+                        contentDescription = "Clear query",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            } else {
+                IconButton(onClick = onVoiceSearch) {
+                    Icon(
+                        imageVector = Icons.Filled.Mic,
+                        contentDescription = "Voice search",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        },
+        singleLine = true,
+        shape = RoundedCornerShape(28.dp),
+        colors = TextFieldDefaults.colors(
+            focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+            focusedIndicatorColor = Color.Transparent,
+            unfocusedIndicatorColor = Color.Transparent,
+            cursorColor = MaterialTheme.colorScheme.primary,
+        ),
+        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+        keyboardActions = KeyboardActions(onSearch = { if (query.isNotBlank()) onSubmit(query) }),
+    )
+}
+
+/**
+ * Everything below the search bar while search is active:
+ *  - empty query       → Recent searches + Explore cards built from the library
+ *  - typing (unsent)   → matching recents / categories, plus "Search for …"
+ *  - submitted         → searching spinner, no-match message, or results grid
+ */
+@Composable
+fun SearchContent(
+    query: String,
+    submittedQuery: String,
+    results: List<SearchHit>,
+    searching: Boolean,
+    indexing: Boolean,
+    recentSearches: List<String>,
+    explore: List<ExploreItem>,
+    onSubmit: (String) -> Unit,
+    onRemoveRecent: (String) -> Unit,
+    onDelete: (photoId: Long, uri: String) -> Unit,
+    onShare: (photoId: Long, uri: String) -> Unit,
+) {
+    var fullScreen by remember { mutableStateOf<SearchHit?>(null) }
+
+    val mode = when {
+        query.isBlank() -> SearchMode.ZeroQuery
+        query != submittedQuery -> SearchMode.Typing
+        searching -> SearchMode.Searching
+        results.isEmpty() -> SearchMode.NoMatches
+        else -> SearchMode.Results
+    }
+
+    AnimatedContent(
+        targetState = mode,
+        transitionSpec = { fadeIn() togetherWith fadeOut() },
+        modifier = Modifier.fillMaxSize(),
+        label = "searchContent",
+    ) { target ->
+        when (target) {
+            SearchMode.ZeroQuery -> ZeroQuery(recentSearches, explore, indexing, onSubmit, onRemoveRecent)
+            SearchMode.Typing -> Suggestions(query, recentSearches, explore, onSubmit, onRemoveRecent)
+            SearchMode.Searching -> SearchingState()
+            SearchMode.NoMatches -> CenterMessage(
+                title = "No matches",
+                subtitle = "Nothing matched “$submittedQuery”. Try describing it differently.",
+            )
+            SearchMode.Results -> LazyVerticalGrid(
                 columns = GridCells.Adaptive(112.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-                contentPadding = PaddingValues(bottom = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 16.dp),
                 modifier = Modifier
                     .fillMaxSize()
                     .navigationBarsPadding(),
             ) {
+                sectionLabel("Best matches")
                 items(results, key = { it.photoId }) { hit ->
-                    PhotoTile(uri = hit.uri, onClick = { fullScreen = hit })
+                    PhotoTile(
+                        uri = hit.uri,
+                        onClick = { fullScreen = hit },
+                        onShare = { onShare(hit.photoId, hit.uri) },
+                    )
                 }
             }
         }
@@ -147,133 +448,188 @@ fun SearchScreen(
     }
 }
 
+private enum class SearchMode { ZeroQuery, Typing, Searching, NoMatches, Results }
+
+private const val MAX_RECENTS_SHOWN = 4
+
 @Composable
-private fun Header(indexedCount: Int, onReindex: () -> Unit) {
+private fun ZeroQuery(
+    recentSearches: List<String>,
+    explore: List<ExploreItem>,
+    indexing: Boolean,
+    onSubmit: (String) -> Unit,
+    onRemoveRecent: (String) -> Unit,
+) {
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(3),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            .navigationBarsPadding()
+            .imePadding(),
+    ) {
+        if (recentSearches.isNotEmpty()) {
+            sectionLabel("Recent")
+            items(recentSearches.take(MAX_RECENTS_SHOWN), span = { GridItemSpan(maxLineSpan) }) { q ->
+                SuggestionRow(text = q, recent = true, onClick = { onSubmit(q) }, onRemove = { onRemoveRecent(q) })
+            }
+        }
+        if (explore.isNotEmpty()) {
+            sectionLabel("Explore your photos")
+            items(explore, key = { it.label }) { item ->
+                ExploreCard(item, onClick = { onSubmit(item.label) })
+            }
+        } else if (recentSearches.isEmpty()) {
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                Text(
+                    if (indexing) "Your photos are being prepared for search. Explore will appear here shortly."
+                    else "Describe what's in a photo — “receipt”, “dog on the beach”, “birthday cake”.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(vertical = 16.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun Suggestions(
+    query: String,
+    recentSearches: List<String>,
+    explore: List<ExploreItem>,
+    onSubmit: (String) -> Unit,
+    onRemoveRecent: (String) -> Unit,
+) {
+    val q = query.trim()
+    val recents = recentSearches.filter { it.contains(q, ignoreCase = true) && !it.equals(q, ignoreCase = true) }
+    val categories = explore.map { it.label }
+        .filter { it.contains(q, ignoreCase = true) && it !in recents && !it.equals(q, ignoreCase = true) }
+
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(1),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            .navigationBarsPadding()
+            .imePadding(),
+    ) {
+        item { SuggestionRow(text = "Search for “$q”", recent = false, onClick = { onSubmit(q) }) }
+        items(recents.take(MAX_RECENTS_SHOWN)) { r ->
+            SuggestionRow(text = r, recent = true, onClick = { onSubmit(r) }, onRemove = { onRemoveRecent(r) })
+        }
+        items(categories) { c -> SuggestionRow(text = c, recent = false, onClick = { onSubmit(c) }) }
+    }
+}
+
+private fun LazyGridScope.sectionLabel(text: String) {
+    item(span = { GridItemSpan(maxLineSpan) }) {
+        Text(
+            text,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(top = 16.dp, bottom = 8.dp),
+        )
+    }
+}
+
+@Composable
+private fun SuggestionRow(
+    text: String,
+    recent: Boolean,
+    onClick: () -> Unit,
+    onRemove: (() -> Unit)? = null,
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = "ImageSense",
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Text(
-                text = if (indexedCount > 0) "$indexedCount photos searchable" else "Getting your photos ready",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        ReindexChip(onClick = onReindex)
-        Spacer(Modifier.width(8.dp))
-        PrivacyChip()
-    }
-}
-
-@Composable
-private fun ReindexChip(onClick: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .clip(RoundedCornerShape(50))
-            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .clip(RoundedCornerShape(12.dp))
             .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 6.dp),
+            .padding(start = 4.dp, top = 4.dp, bottom = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Text("➕", style = MaterialTheme.typography.labelMedium)
-        Text(
-            "Add photos",
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurface,
-            fontWeight = FontWeight.Medium,
+        Icon(
+            imageVector = if (recent) Icons.Outlined.History else Icons.Filled.Search,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(20.dp),
         )
-    }
-}
-
-@Composable
-private fun PrivacyChip() {
-    Row(
-        modifier = Modifier
-            .clip(RoundedCornerShape(50))
-            .background(MaterialTheme.colorScheme.primaryContainer)
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        Text("🔒", style = MaterialTheme.typography.labelMedium)
+        Spacer(Modifier.width(16.dp))
         Text(
-            "Offline",
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onPrimaryContainer,
-            fontWeight = FontWeight.Medium,
+            text,
+            style = MaterialTheme.typography.bodyLarge,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier
+                .weight(1f)
+                .padding(vertical = 10.dp),
         )
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun SearchBar(
-    query: String,
-    onQueryChange: (String) -> Unit,
-    onSubmit: (String) -> Unit,
-) {
-    TextField(
-        value = query,
-        onValueChange = onQueryChange,
-        modifier = Modifier.fillMaxWidth(),
-        placeholder = { Text("Search your photos…") },
-        leadingIcon = { Text("🔍") },
-        trailingIcon = {
-            if (query.isNotEmpty()) {
-                TextButton(onClick = { onQueryChange("") }) { Text("Clear") }
+        if (onRemove != null) {
+            IconButton(onClick = onRemove) {
+                Icon(
+                    imageVector = Icons.Filled.Close,
+                    contentDescription = "Remove “$text” from recents",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(18.dp),
+                )
             }
-        },
-        singleLine = true,
-        shape = RoundedCornerShape(28.dp),
-        colors = TextFieldDefaults.colors(
-            focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-            focusedIndicatorColor = Color.Transparent,
-            unfocusedIndicatorColor = Color.Transparent,
-            cursorColor = MaterialTheme.colorScheme.primary,
-        ),
-        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = ImeAction.Search),
-        keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSearch = { onSubmit(query) }),
-    )
-}
-
-@Composable
-private fun IndexingBanner(done: Int, total: Int) {
-    Column(modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
-        Text(
-            text = if (total > 0) "Indexing your photos — $done / $total" else "Indexing your photos…",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Spacer(Modifier.height(6.dp))
-        if (total > 0) {
-            LinearProgressIndicator(
-                progress = { done.toFloat() / total },
-                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(50)),
-            )
-        } else {
-            LinearProgressIndicator(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(50)))
         }
     }
 }
 
 @Composable
-private fun PhotoTile(uri: String, onClick: () -> Unit) {
+private fun ExploreCard(item: ExploreItem, onClick: () -> Unit) {
     Box(
         modifier = Modifier
             .aspectRatio(1f)
             .clip(RoundedCornerShape(14.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant) // placeholder while loading
+            .background(MaterialTheme.colorScheme.surfaceVariant)
             .clickable(onClick = onClick),
+    ) {
+        AsyncImage(
+            model = Uri.parse(item.coverUri),
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize(),
+        )
+        // Bottom scrim keeps the label legible on any photo.
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        0.45f to Color.Transparent,
+                        1f to Color(0xCC000000),
+                    ),
+                ),
+        )
+        Text(
+            item.label,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.SemiBold,
+            color = Color.White,
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(10.dp),
+        )
+    }
+}
+
+@Composable
+private fun PhotoTile(uri: String, onClick: () -> Unit, onShare: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .aspectRatio(1f)
+            .clip(RoundedCornerShape(10.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onTap = { _ -> onClick() },
+                    onLongPress = { _ -> onShare() }
+                )
+            },
     ) {
         AsyncImage(
             model = Uri.parse(uri),
@@ -281,32 +637,6 @@ private fun PhotoTile(uri: String, onClick: () -> Unit) {
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize(),
         )
-    }
-}
-
-@Composable
-private fun EmptyState() {
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.padding(24.dp),
-        ) {
-            Text("🖼️", style = MaterialTheme.typography.displayMedium)
-            Spacer(Modifier.height(16.dp))
-            Text(
-                "Search your photos by what's in them",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                textAlign = TextAlign.Center,
-            )
-            Spacer(Modifier.height(8.dp))
-            Text(
-                "Type a word like “lake” or tap a suggestion above. Everything runs on your device.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-            )
-        }
     }
 }
 
@@ -393,7 +723,17 @@ private fun FullScreenViewer(uri: String, onDismiss: () -> Unit, onDelete: () ->
                     .clickable(onClick = onDismiss)
                     .padding(horizontal = 16.dp, vertical = 8.dp),
             ) {
-                Text("Close", color = Color.White, style = MaterialTheme.typography.labelLarge)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Close,
+                        contentDescription = null,
+                        tint = Color.White,
+                    )
+                    Text("Close", color = Color.White, style = MaterialTheme.typography.labelLarge)
+                }
             }
 
             // Delete action — the OS shows its own confirmation dialog before deleting.
@@ -409,7 +749,17 @@ private fun FullScreenViewer(uri: String, onDismiss: () -> Unit, onDelete: () ->
                     .clickable(onClick = onDelete)
                     .padding(horizontal = 28.dp, vertical = 14.dp),
             ) {
-                Text("🗑  Delete", color = Color.White, style = MaterialTheme.typography.labelLarge)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Delete,
+                        contentDescription = null,
+                        tint = Color.White,
+                    )
+                    Text("Delete", color = Color.White, style = MaterialTheme.typography.labelLarge)
+                }
             }
         }
     }

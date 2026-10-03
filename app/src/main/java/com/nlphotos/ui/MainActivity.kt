@@ -1,28 +1,51 @@
 package com.nlphotos.ui
 
 import android.Manifest
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.speech.RecognizerIntent
+import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.ui.graphics.Color
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -33,8 +56,13 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.work.WorkInfo
@@ -88,10 +116,19 @@ private val NlPhotosColors = darkColorScheme(
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Draw behind the status / navigation bars so the whole screen is one
+        // continuous background instead of a differently-tinted system strip.
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+        )
         super.onCreate(savedInstanceState)
         setContent {
             MaterialTheme(colorScheme = NlPhotosColors) {
-                Surface(modifier = Modifier.fillMaxSize()) {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background,
+                ) {
                     AppRoot()
                 }
             }
@@ -170,9 +207,12 @@ private fun AppRoot() {
     val indexedCount by vm.indexedCount.collectAsState()
     val searching by vm.searching.collectAsState()
     val gallery by vm.gallery.collectAsState()
+    val recentSearches by vm.recentSearches.collectAsState()
+    val submittedQuery by vm.submittedQuery.collectAsState()
+    val explore by vm.explore.collectAsState()
 
-    var tab by rememberSaveable { mutableStateOf(0) } // 0=Photos, 1=Search
     var viewer by remember { mutableStateOf<Pair<Int, Int>?>(null) } // (sectionIdx, itemIdx)
+    var searchActive by remember { mutableStateOf(false) }
 
     // Delete flow: on Android 11+ the OS shows its own confirm dialog (via the
     // IntentSender returned by MediaStore.createDeleteRequest); on success we
@@ -192,32 +232,109 @@ private fun AppRoot() {
         if (deletedNow) { vm.onPhotoDeleted(photoId); pendingDelete = null }
     }
 
-    Scaffold(
-        bottomBar = {
-            NavigationBar {
-                NavigationBarItem(
-                    selected = tab == 0, onClick = { tab = 0 },
-                    icon = { Icon(Icons.Filled.Home, null) }, label = { Text("Photos") },
-                )
-                NavigationBarItem(
-                    selected = tab == 1, onClick = { tab = 1 },
-                    icon = { Icon(Icons.Filled.Search, null) }, label = { Text("Search") },
-                )
-            }
-        },
-    ) { pad ->
-        Box(Modifier.padding(pad)) {
-            when (tab) {
-                0 -> GalleryScreen(
-                    sections = gallery, indexing = indexing, indexDone = done, indexTotal = total,
-                    onOpen = { s, i -> viewer = s to i },
-                )
-                else -> SearchScreen(
-                    query = query, onQueryChange = vm::onQueryChange, onSubmit = { vm.search(it) },
-                    results = results, indexedCount = indexedCount, indexing = indexing,
-                    indexDone = done, indexTotal = total, searching = searching,
-                    onReindex = { reselectLauncher.launch(PHOTO_PERMISSIONS) },
+    val onShare: (Long, String) -> Unit = { _, uri ->
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "image/*"
+            putExtra(Intent.EXTRA_STREAM, Uri.parse(uri))
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(Intent.createChooser(intent, "Share via"))
+    }
+
+    // Voice search via the system speech recognizer (offline preferred). The
+    // recognized text is run as a normal search inside the search overlay.
+    val voiceLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        val spoken = result.data
+            ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+            ?.firstOrNull()
+        if (result.resultCode == android.app.Activity.RESULT_OK && !spoken.isNullOrBlank()) {
+            vm.search(spoken)
+            searchActive = true
+        }
+    }
+    val onVoiceSearch: () -> Unit = {
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
+            putExtra(RecognizerIntent.EXTRA_PROMPT, "Describe the photo")
+        }
+        try {
+            voiceLauncher.launch(intent)
+        } catch (e: ActivityNotFoundException) {
+            Toast.makeText(context, "Voice search isn't available on this device", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    val focusManager = LocalFocusManager.current
+    val headerState = rememberCollapsingHeaderState()
+    // Coming back to Home always shows the full header.
+    LaunchedEffect(searchActive) { if (!searchActive) headerState.reset() }
+    val exitSearch = {
+        focusManager.clearFocus()
+        vm.clearSearch()
+        searchActive = false
+    }
+    BackHandler(enabled = searchActive) { exitSearch() }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .statusBarsPadding()
+            .nestedScroll(headerState.nestedScrollConnection),
+    ) {
+        // One search bar shared by Home and Search, so opening search expands
+        // in place instead of navigating to a different-looking screen.
+        TopSearchArea(
+            searchActive = searchActive,
+            query = query,
+            indexedCount = indexedCount,
+            indexing = indexing,
+            indexDone = done,
+            indexTotal = total,
+            onQueryChange = vm::onQueryChange,
+            onSubmit = { text ->
+                vm.search(text)
+                focusManager.clearFocus() // drop the keyboard so results are visible
+            },
+            onActivate = { searchActive = true },
+            onBack = exitSearch,
+            onVoiceSearch = onVoiceSearch,
+            headerState = headerState,
+        )
+
+        AnimatedContent(
+            targetState = searchActive,
+            transitionSpec = {
+                (fadeIn(tween(220)) + slideInVertically(tween(220)) { it / 24 }) togetherWith
+                    fadeOut(tween(150))
+            },
+            modifier = Modifier.fillMaxSize(),
+            label = "homeOrSearch",
+        ) { active ->
+            if (active) {
+                SearchContent(
+                    query = query,
+                    submittedQuery = submittedQuery,
+                    results = results,
+                    searching = searching,
+                    indexing = indexing,
+                    recentSearches = recentSearches,
+                    explore = explore,
+                    onSubmit = { text ->
+                        vm.search(text)
+                        focusManager.clearFocus()
+                    },
+                    onRemoveRecent = vm::removeRecentSearch,
                     onDelete = onDelete,
+                    onShare = onShare,
+                )
+            } else {
+                GalleryScreen(
+                    sections = gallery,
+                    onOpen = { s, i -> viewer = s to i },
+                    onShare = onShare,
                 )
             }
         }
@@ -228,7 +345,7 @@ private fun AppRoot() {
         if (flat.isNotEmpty()) {
             PhotoViewerScreen(
                 items = flat, startIndex = i, onDismiss = { viewer = null },
-                onFindSimilar = { id -> vm.findSimilar(id); tab = 1 },
+                onFindSimilar = { id -> vm.findSimilar(id); searchActive = true },
                 onDelete = { id, uri -> onDelete(id, uri); viewer = null },
             )
         }
